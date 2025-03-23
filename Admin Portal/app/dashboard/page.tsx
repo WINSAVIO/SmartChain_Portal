@@ -1,40 +1,45 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useEffect, useState } from "react"
-import { DashboardLayout } from "@/components/dashboard-layout"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { useNotificationStore } from "@/lib/notification-store"
-import { cn } from "@/lib/utils"
-import { BarChartIcon, Package, TrendingUp, Bell } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { formatDistanceToNow } from "date-fns"
-import Link from "next/link"
+import { useEffect, useState } from "react";
+import { DashboardLayout } from "@/components/dashboard-layout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useNotificationStore } from "@/lib/notification-store";
+import { cn } from "@/lib/utils";
+import { BarChartIcon, Package, TrendingUp, Bell } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
+import { useAuth } from "@/lib/auth-provider";
 
 // Mock data for stats
 const statsData = {
   totalSales: "2,345",
   pendingRequests: "18",
   inventoryItems: "1,245",
-}
+};
 
 export default function DashboardPage() {
-  const { fetchNotifications, notifications, unreadCount, markAsRead } = useNotificationStore()
-  const [isClient, setIsClient] = useState(false)
+  const { user } = useAuth(); // Access the authenticated user
+  const { fetchNotifications, notifications, unreadCount, markAsRead } = useNotificationStore();
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    fetchNotifications()
-    setIsClient(true)
-  }, [fetchNotifications])
+    fetchNotifications();
+    setIsClient(true);
+  }, [fetchNotifications]);
 
   // Get only unread notifications
-  const unreadNotifications = notifications.filter((notification) => !notification.read).slice(0, 3)
+  const unreadNotifications = notifications.filter((notification) => !notification.read).slice(0, 3);
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">Dashboard</h1>
+        {user && (
+          <p className="text-sm text-muted-foreground">
+            Welcome, {user.email}!
+          </p>
+        )}
 
         {/* Stats cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -109,7 +114,7 @@ export default function DashboardPage() {
         )}
       </div>
     </DashboardLayout>
-  )
+  );
 }
 
 // Stats card component
@@ -120,11 +125,11 @@ function StatsCard({
   icon: Icon,
   iconColor,
 }: {
-  title: string
-  value: string
-  description: string
-  icon: React.ElementType
-  iconColor?: string
+  title: string;
+  value: string;
+  description: string;
+  icon: React.ElementType;
+  iconColor?: string;
 }) {
   return (
     <Card>
@@ -137,7 +142,7 @@ function StatsCard({
         <p className="text-xs text-muted-foreground">{description}</p>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 // Chart card component
@@ -146,9 +151,9 @@ function ChartCard({
   type,
   className,
 }: {
-  title: string
-  type: "pie" | "bar" | "line"
-  className?: string
+  title: string;
+  type: "pie" | "bar" | "line";
+  className?: string;
 }) {
   return (
     <Card className={cn("col-span-1", className)}>
@@ -163,6 +168,5 @@ function ChartCard({
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
-

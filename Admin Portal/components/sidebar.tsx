@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useRef } from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Package,
@@ -15,20 +15,20 @@ import {
   BarChart,
   Sparkles,
   Package2,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Badge } from "@/components/ui/badge"
-import { create } from "zustand"
-import { persist } from "zustand/middleware"
-import { useNotificationStore } from "@/lib/notification-store"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { useNotificationStore } from "@/lib/notification-store";
 
 // Sidebar state management with Zustand
 type SidebarState = {
-  expanded: boolean
-  setExpanded: (expanded: boolean) => void
-  toggleExpanded: () => void
-}
+  expanded: boolean;
+  setExpanded: (expanded: boolean) => void;
+  toggleExpanded: () => void;
+};
 
 export const useSidebarStore = create(
   persist<SidebarState>(
@@ -39,9 +39,9 @@ export const useSidebarStore = create(
     }),
     {
       name: "sidebar-storage",
-    },
-  ),
-)
+    }
+  )
+);
 
 // Navigation items
 const navItems = [
@@ -86,36 +86,36 @@ const navItems = [
     href: "/settings",
     icon: Settings,
   },
-]
+];
 
 export function Sidebar() {
-  const pathname = usePathname()
-  const { expanded, setExpanded, toggleExpanded } = useSidebarStore()
-  const { unreadCount } = useNotificationStore()
-  const [isMounted, setIsMounted] = useState(false)
-  const sidebarRef = useRef<HTMLDivElement>(null)
+  const pathname = usePathname();
+  const { expanded, setExpanded, toggleExpanded } = useSidebarStore();
+  const { unreadCount } = useNotificationStore();
+  const [isMounted, setIsMounted] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   // Handle click outside to collapse sidebar
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (sidebarRef.current && !sidebarRef.current.contains(event.target as Node) && expanded) {
-        setExpanded(false)
+        setExpanded(false);
       }
     }
 
-    document.addEventListener("mousedown", handleClickOutside)
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-    }
-  }, [expanded, setExpanded])
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [expanded, setExpanded]);
 
   // Ensure hydration is complete before rendering
   useEffect(() => {
-    setIsMounted(true)
-  }, [])
+    setIsMounted(true);
+  }, []);
 
   if (!isMounted) {
-    return null
+    return null;
   }
 
   return (
@@ -141,7 +141,7 @@ export function Sidebar() {
                       href={item.href}
                       className={cn(
                         "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                        pathname === item.href ? "bg-primary text-primary-foreground" : "hover:bg-muted",
+                        pathname === item.href ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                       )}
                     >
                       <item.icon className="h-5 w-5" />
@@ -184,7 +184,7 @@ export function Sidebar() {
                   href={item.href}
                   className={cn(
                     "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                    pathname === item.href ? "bg-primary text-primary-foreground" : "hover:bg-muted",
+                    pathname === item.href ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                   )}
                   aria-label={!expanded ? item.title : undefined}
                 >
@@ -194,7 +194,7 @@ export function Sidebar() {
                     <Badge
                       className={cn(
                         "bg-destructive text-destructive-foreground",
-                        expanded ? "ml-auto" : "absolute top-1 right-1 h-2 w-2 p-0",
+                        expanded ? "ml-auto" : "absolute top-1 right-1 h-2 w-2 p-0"
                       )}
                     >
                       {expanded ? unreadCount : ""}
@@ -207,6 +207,5 @@ export function Sidebar() {
         </nav>
       </div>
     </>
-  )
+  );
 }
-

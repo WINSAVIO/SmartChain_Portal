@@ -1,70 +1,116 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { z } from "zod"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useAuthStore, useRegistrationStore } from "@/lib/auth-provider"
-import { Button } from "@/components/ui/button"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Package2 } from "lucide-react"
+import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Package2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 // Form validation schema
 const companySchema = z.object({
   companyName: z.string().min(2, { message: "Company name is required" }),
   address: z.string().min(5, { message: "Address is required" }),
   taxId: z.string().min(3, { message: "Tax ID is required" }),
-})
+});
 
-type CompanyFormValues = z.infer<typeof companySchema>
+type CompanyFormValues = z.infer<typeof companySchema>;
 
 export default function CompanyRegistrationPage() {
-  const router = useRouter()
-  const { data, setData, clearData } = useRegistrationStore()
-  const { register } = useAuthStore()
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { toast } = useToast();
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Initialize form with existing data
+  // Get query parameters
+  const username = searchParams.get("username") || "";
+  const email = searchParams.get("email") || "";
+  const password = searchParams.get("password") || "";
+  const isGoogleUser = searchParams.get("isGoogleUser") === "true";
+
+  // Validate that email is present
+  if (!email) {
+    setError("Email is missing. Please go back and try again.");
+  }
+
   const form = useForm<CompanyFormValues>({
     resolver: zodResolver(companySchema),
     defaultValues: {
-      companyName: data.companyName || "",
-      address: data.address || "",
-      taxId: data.taxId || "",
+      companyName: "",
+      address: "",
+      taxId: "",
     },
-  })
+  });
 
-  // Form submission handler
   const onSubmit = async (formData: CompanyFormValues) => {
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
 
     try {
-      // Update registration data
-      setData(formData)
+      let idToken;
+      let userUid;
 
-      // Register user with all collected data
-      await register({
-        ...data,
-        ...formData,
-      })
+      if (!isGoogleUser) {
+        // Create user in Firebase Authentication (for email/password users)
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        userUid = user.uid; // Store the UID before signing out
+        idToken = await user.getIdToken();
 
-      // Clear registration data after successful registration
-      clearData()
+        // Sign out the user immediately after creation
+        await signOut(auth);
+      } else {
+        // For Google users, the user is already authenticated
+        const user = auth.currentUser;
+        if (!user) throw new Error("No authenticated user found");
+        userUid = user.uid; // Store the UID
+        idToken = await user.getIdToken();
+      }
 
-      // Navigate to dashboard
-      router.push("/dashboard")
-    } catch (err) {
-      setError("Registration failed. Please try again.")
+      // Save profile data to the server
+      const response = await fetch("http://localhost:4000/api/map-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          uid: userUid, // Use the stored UID
+          email,
+          companyName: formData.companyName,
+          address: formData.address,
+          taxId: formData.taxId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to save profile data");
+      }
+
+      // Show confirmation toast
+      toast({
+        title: "Registration Successful",
+        description: "Your account has been created. Please log in to continue.",
+      });
+
+      // Redirect to login page
+      router.push("/login");
+    } catch (err: any) {
+      setError(err.message || "Registration failed. Please try again.");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
@@ -142,6 +188,5 @@ export default function CompanyRegistrationPage() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
-

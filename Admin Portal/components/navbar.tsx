@@ -1,15 +1,12 @@
-"use client"
+"use client";
 
-import { cn } from "@/lib/utils"
-
-import type React from "react"
-
-import { useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { Bell, Search, LogOut, SettingsIcon } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils";
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Bell, Search, LogOut, SettingsIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,38 +14,37 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useAuthStore } from "@/lib/auth-provider"
-import { useNotificationStore } from "@/lib/notification-store"
-import { Badge } from "@/components/ui/badge"
-import { formatDistanceToNow } from "date-fns"
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/lib/auth-provider"; // Use the correct hook
+import { useNotificationStore } from "@/lib/notification-store";
+import { Badge } from "@/components/ui/badge";
+import { formatDistanceToNow } from "date-fns";
 
 export function Navbar() {
-  const router = useRouter()
-  const { user, logout } = useAuthStore()
-  const { notifications, markAllAsRead, unreadCount } = useNotificationStore()
-  const [searchQuery, setSearchQuery] = useState("")
+  const router = useRouter();
+  const { user, logout } = useAuth(); // Use the correct useAuth hook
+  const { notifications, markAllAsRead, unreadCount } = useNotificationStore();
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    // Implement search functionality
-    console.log("Searching for:", searchQuery)
-  }
+    e.preventDefault();
+    console.log("Searching for:", searchQuery);
+  };
 
   const handleLogout = () => {
-    logout()
-    router.push("/login")
-  }
+    logout();
+    router.push("/login");
+  };
 
-  const userInitials = user?.username ? user.username.substring(0, 2).toUpperCase() : "U"
+  // Use user.email for initials since Firebase user doesn't have a username
+  const userInitials = user?.email ? user.email.substring(0, 2).toUpperCase() : "U";
 
   return (
     <div className="border-b bg-background">
       <div className="flex h-16 items-center px-4 md:px-6">
         <div className="flex items-center w-full justify-between">
           <div className="md:hidden">
-            {/* Mobile logo */}
             <h2 className="text-lg font-semibold">WMS</h2>
           </div>
 
@@ -110,7 +106,7 @@ export function Navbar() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
                   <Avatar>
-                    <AvatarImage src="/placeholder-user.jpg" alt={user?.username || "User"} />
+                    <AvatarImage src="/placeholder-user.jpg" alt={user?.email || "User"} />
                     <AvatarFallback>{userInitials}</AvatarFallback>
                   </Avatar>
                   <span className="sr-only">User menu</span>
@@ -135,6 +131,5 @@ export function Navbar() {
         </div>
       </div>
     </div>
-  )
+  );
 }
-

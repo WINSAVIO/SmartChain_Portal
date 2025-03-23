@@ -1,87 +1,192 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState } from "react"
-import { DashboardLayout } from "@/components/dashboard-layout"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Switch } from "@/components/ui/switch"
-import { useAuthStore } from "@/lib/auth-provider"
-import { useToast } from "@/hooks/use-toast"
+import { useState, useEffect } from "react";
+import { DashboardLayout } from "@/components/dashboard-layout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/lib/auth-provider";
+import { useToast } from "@/hooks/use-toast";
+import { updateEmail } from "firebase/auth";
 
 export default function SettingsPage() {
-  const { user, updateUser } = useAuthStore()
-  const { toast } = useToast()
-  const [isLoading, setIsLoading] = useState(false)
-
-  // Form states
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
   const [profileData, setProfileData] = useState({
-    username: user?.username || "",
-    email: user?.email || "",
-    companyName: user?.companyName || "",
-    address: user?.address || "",
-    taxId: user?.taxId || "",
-  })
-
+    email: "",
+    companyName: "",
+    address: "",
+    taxId: "",
+  });
   const [notificationSettings, setNotificationSettings] = useState({
     emailNotifications: true,
     pushNotifications: true,
     weeklyReports: true,
     stockAlerts: true,
-  })
+  });
+
+  // Fetch user profile data and notification settings on mount
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchProfileData = async () => {
+      try {
+        const idToken = await user.getIdToken();
+        const response = await fetch("http://localhost:4000/api/user-profile", {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setProfileData({
+            email: user.email || "",
+            companyName: data.companyName || "",
+            address: data.address || "",
+            taxId: data.taxId || "",
+          });
+        } else {
+          throw new Error("Failed to fetch profile data");
+        }
+      } catch (error) {
+        console.error("Error fetching profile data:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load profile data.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    const fetchNotificationSettings = async () => {
+      try {
+        const idToken = await user.getIdToken();
+        const response = await fetch("http://localhost:4000/api/notification-settings", {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setNotificationSettings({
+            emailNotifications: data.emailNotifications ?? true,
+            pushNotifications: data.pushNotifications ?? true,
+            weeklyReports: data.weeklyReports ?? true,
+            stockAlerts: data.stockAlerts ?? true,
+          });
+        } else {
+          throw new Error("Failed to fetch notification settings");
+        }
+      } catch (error) {
+        console.error("Error fetching notification settings:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load notification settings.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchProfileData();
+    fetchNotificationSettings();
+  }, [user, toast]);
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
+    e.preventDefault();
+    setIsLoading(true);
 
     try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      if (!user) throw new Error("User not authenticated");
 
-      // Update user data
-      updateUser(profileData)
+      // Validate email
+      if (!profileData.email) {
+        throw new Error("Email cannot be empty");
+      }
+
+      // Update email in Firebase if it has changed
+      if (profileData.email !== user.email) {
+        await updateEmail(user, profileData.email);
+        console.log("Email updated in Firebase");
+      }
+
+      // Update other profile data on the server
+      const idToken = await user.getIdToken();
+      const response = await fetch("http://localhost:4000/api/user-profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          email: profileData.email,
+          companyName: profileData.companyName,
+          address: profileData.address,
+          taxId: profileData.taxId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to update profile");
+      }
 
       toast({
-        title: "Profile updated",
+        title: "Profile Updated",
         description: "Your profile information has been updated successfully.",
-      })
-    } catch (error) {
+      });
+    } catch (error: any) {
+      console.error("Profile update error:", error);
       toast({
-        title: "Update failed",
-        description: "There was an error updating your profile.",
+        title: "Update Failed",
+        description: error.message || "There was an error updating your profile.",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleNotificationUpdate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
+    e.preventDefault();
+    setIsLoading(true);
 
     try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      if (!user) throw new Error("User not authenticated");
+
+      const idToken = await user.getIdToken();
+      const response = await fetch("http://localhost:4000/api/notification-settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify(notificationSettings),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to update notification settings");
+      }
 
       toast({
-        title: "Notification settings updated",
+        title: "Notification Settings Updated",
         description: "Your notification preferences have been updated successfully.",
-      })
-    } catch (error) {
+      });
+    } catch (error: any) {
+      console.error("Notification update error:", error);
       toast({
-        title: "Update failed",
-        description: "There was an error updating your notification settings.",
+        title: "Update Failed",
+        description: error.message || "There was an error updating your notification settings.",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <DashboardLayout>
@@ -105,20 +210,13 @@ export default function SettingsPage() {
                 <CardContent className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="username">Username</Label>
-                      <Input
-                        id="username"
-                        value={profileData.username}
-                        onChange={(e) => setProfileData({ ...profileData, username: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
                       <Label htmlFor="email">Email</Label>
                       <Input
                         id="email"
                         type="email"
                         value={profileData.email}
                         onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                        required
                       />
                     </div>
                   </div>
@@ -235,6 +333,5 @@ export default function SettingsPage() {
         </Tabs>
       </div>
     </DashboardLayout>
-  )
+  );
 }
-

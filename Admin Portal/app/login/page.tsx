@@ -1,55 +1,118 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { z } from "zod"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useAuthStore } from "@/lib/auth-provider"
-import { Button } from "@/components/ui/button"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Package2 } from "lucide-react"
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { auth, googleProvider } from "@/lib/firebase";
+import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import { useAuth } from "@/lib/auth-provider"; // Import the new useAuth hook
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Package2 } from "lucide-react";
 
 // Form validation schema
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address" }),
   password: z.string().min(6, { message: "Password must be at least 6 characters" }),
-})
+});
 
-type LoginFormValues = z.infer<typeof loginSchema>
+type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const router = useRouter()
-  const { login } = useAuthStore()
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter();
+  const { user, loading } = useAuth(); // Use the new AuthProvider
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  // Initialize form
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!loading && user) {
+      console.log("User already logged in, redirecting to dashboard...");
+      router.push("/dashboard");
+    }
+  }, [user, loading, router]);
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
       email: "",
       password: "",
     },
-  })
+  });
 
-  // Form submission handler
   const onSubmit = async (data: LoginFormValues) => {
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
 
     try {
-      await login(data.email, data.password)
-      router.push("/dashboard")
-    } catch (err) {
-      setError("Invalid email or password. Please try again.")
+      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+      console.log("Email login successful, user:", userCredential.user.uid);
+      console.log("Redirecting to dashboard...");
+      router.push("/dashboard");
+    } catch (err: any) {
+      setError("Invalid email or password. Please try again.");
+      console.error("Email login error:", err);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
+  };
+
+  const handleGoogleLogin = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      const idToken = await user.getIdToken();
+      console.log("Google login successful, user:", user.uid);
+
+      const response = await fetch("http://localhost:4000/api/map-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ uid: user.uid, email: user.email }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Failed to map user on server: ${errorData.message || response.statusText}`);
+      }
+
+      console.log("Redirecting to dashboard...");
+      router.push("/dashboard");
+    } catch (err: any) {
+      setError("Google sign-in failed. Please try again.");
+      console.error("Google login error:", err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <div>Loading...</div>;
   }
 
   return (
@@ -101,10 +164,20 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
+          <div className="mt-4 text-center">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handleGoogleLogin}
+              disabled={isLoading}
+            >
+              {isLoading ? "Processing..." : "Sign in with Google"}
+            </Button>
+          </div>
         </CardContent>
         <CardFooter className="flex justify-center">
           <p className="text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
+            Don't have an account?{" "}
             <Link href="/register" className="text-primary hover:underline">
               Register
             </Link>
@@ -112,6 +185,5 @@ export default function LoginPage() {
         </CardFooter>
       </Card>
     </div>
-  )
+  );
 }
-

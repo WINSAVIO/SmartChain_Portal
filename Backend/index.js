@@ -1,58 +1,185 @@
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
-// const mlRoutes = require('./routes/mlRouter');
-// const { db } = require('./config/firebase');
+const express = require("express");
+const cors = require("cors");
+const admin = require("firebase-admin");
+const serviceAccount = require("./serviceAccountKey.json");
+
+// Initialize Firebase Admin SDK with Firestore
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+const db = admin.firestore(); // Initialize Firestore
 
 const app = express();
-
-// Middleware
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors());
 app.use(express.json());
 
-// // Routes
-// app.use('/api/ml', mlRoutes);
+// Middleware to verify Firebase ID token
+const authenticateToken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Unauthorized: No token provided" });
+  }
 
-// User Registration (without Firebase Auth)
-// app.post("/register", async (req, res) => {
-//   const { fullName, dateOfBirth, email, phoneNumber, username, password } = req.body;
+  const idToken = authHeader.split("Bearer ")[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    req.user = decodedToken;
+    next();
+  } catch (error) {
+    console.error("Token verification error:", error);
+    return res.status(401).json({ message: "Unauthorized: Invalid token" });
+  }
+};
 
-//   // Validate required fields
-//   if (!fullName || !dateOfBirth || !email || !phoneNumber || !username || !password) {
-//     return res.status(400).json({ error: "All fields are required" });
-//   }
+// Map user (create or update user data in Firestore)
+app.post("/api/map-user", authenticateToken, async (req, res) => {
+  const { uid, email, companyName, address, taxId } = req.body;
+  if (!uid || !email) {
+    return res.status(400).json({ message: "Missing uid or email" });
+  }
 
-//   try {
-//     // Check if username is already taken
-//     const usernameSnapshot = await db
-//       .collection("users")
-//       .where("username", "==", username)
-//       .get();
+  try {
+    const userRef = db.collection("users").doc(uid);
+    await userRef.set(
+      {
+        profile: {
+          email,
+          companyName: companyName || "",
+          address: address || "",
+          taxId: taxId || "",
+        },
+        notificationSettings: {
+          emailNotifications: true,
+          pushNotifications: true,
+          weeklyReports: true,
+          stockAlerts: true,
+        },
+      },
+      { merge: true }
+    );
 
-//     if (!usernameSnapshot.empty) {
-//       return res.status(400).json({ error: "Username already taken" });
-//     }
+    console.log("User data saved to Firestore:", { uid, email, companyName, address, taxId });
 
-//     // Store user data in Firestore
-//     await db.collection("users").add({
-//       fullName,
-//       dateOfBirth, // Store as "yyyy-mm-dd" format
-//       phoneNumber,
-//       username,
-//       email,
-//       password, 
-//       createdAt: new Date(),
-//     });
+    res.status(200).json({ message: "User mapped successfully" });
+  } catch (error) {
+    console.error("Error saving user data to Firestore:", error);
+    res.status(500).json({ message: "Failed to save user data" });
+  }
+});
 
-//     // Send success response
-//     res.status(201).json({ message: "User registered successfully" });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ error: "Internal server error" });
-//   }
-// });
+// Get user profile
+app.get("/api/user-profile", authenticateToken, async (req, res) => {
+  const uid = req.user.uid;
 
-const PORT = process.env.PORT || 5000;
+  try {
+    const userRef = db.collection("users").doc(uid);
+    const doc = await userRef.get();
+
+    if (!doc.exists) {
+      // If the document doesn't exist, return default values
+      return res.status(200).json({
+        email: req.user.email,
+        companyName: "",
+        address: "",
+        taxId: "",
+      });
+    }
+
+    const data = doc.data();
+    res.status(200).json(data.profile || { email: req.user.email, companyName: "", address: "", taxId: "" });
+  } catch (error) {
+    console.error("Error fetching user profile from Firestore:", error);
+    res.status(500).json({ message: "Failed to fetch user profile" });
+  }
+});
+
+// Update user profile
+app.put("/api/user-profile", authenticateToken, async (req, res) => {
+  const uid = req.user.uid;
+  const { email, companyName, address, taxId } = req.body;
+
+  try {
+    const userRef = db.collection("users").doc(uid);
+    await userRef.set(
+      {
+        profile: {
+          email: email || req.user.email,
+          companyName: companyName || "",
+          address: address || "",
+          taxId: taxId || "",
+        },
+      },
+      { merge: true }
+    );
+
+    res.status(200).json({ message: "Profile updated successfully" });
+  } catch (error) {
+    console.error("Error updating user profile in Firestore:", error);
+    res.status(500).json({ message: "Failed to update user profile" });
+  }
+});
+
+// Get notification settings
+app.get("/api/notification-settings", authenticateToken, async (req, res) => {
+  const uid = req.user.uid;
+
+  try {
+    const userRef = db.collection("users").doc(uid);
+    const doc = await userRef.get();
+
+    if (!doc.exists) {
+      // If the document doesn't exist, return default values
+      return res.status(200).json({
+        emailNotifications: true,
+        pushNotifications: true,
+        weeklyReports: true,
+        stockAlerts: true,
+      });
+    }
+
+    const data = doc.data();
+    res.status(200).json(
+      data.notificationSettings || {
+        emailNotifications: true,
+        pushNotifications: true,
+        weeklyReports: true,
+        stockAlerts: true,
+      }
+    );
+  } catch (error) {
+    console.error("Error fetching notification settings from Firestore:", error);
+    res.status(500).json({ message: "Failed to fetch notification settings" });
+  }
+});
+
+// Update notification settings
+app.put("/api/notification-settings", authenticateToken, async (req, res) => {
+  const uid = req.user.uid;
+  const { emailNotifications, pushNotifications, weeklyReports, stockAlerts } = req.body;
+
+  try {
+    const userRef = db.collection("users").doc(uid);
+    await userRef.set(
+      {
+        notificationSettings: {
+          emailNotifications: emailNotifications ?? true,
+          pushNotifications: pushNotifications ?? true,
+          weeklyReports: weeklyReports ?? true,
+          stockAlerts: stockAlerts ?? true,
+        },
+      },
+      { merge: true }
+    );
+
+    res.status(200).json({ message: "Notification settings updated successfully" });
+  } catch (error) {
+    console.error("Error updating notification settings in Firestore:", error);
+    res.status(500).json({ message: "Failed to update notification settings" });
+  }
+});
+
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
