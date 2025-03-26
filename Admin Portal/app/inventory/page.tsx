@@ -1,13 +1,26 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { DashboardLayout } from "@/components/dashboard-layout"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Search, Plus, AlertTriangle } from "lucide-react"
+import { useState, useEffect } from "react";
+import { DashboardLayout } from "@/components/dashboard-layout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Search, Plus, AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,135 +29,152 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast"
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-provider";
 
-// Mock inventory data
-const inventoryItems = [
-  {
-    id: "ITM-001",
-    name: "Office Chairs",
-    supplier: "Office Supplies Co.",
-    quantity: 85,
-    reorderPoint: 20,
-    category: "Furniture",
-  },
-  {
-    id: "ITM-002",
-    name: "Desk Lamps",
-    supplier: "Lighting Solutions Inc.",
-    quantity: 120,
-    reorderPoint: 30,
-    category: "Lighting",
-  },
-  {
-    id: "ITM-003",
-    name: "Monitors",
-    supplier: "Tech Supplies Ltd.",
-    quantity: 15,
-    reorderPoint: 20,
-    category: "Electronics",
-  },
-  {
-    id: "ITM-004",
-    name: "Keyboards",
-    supplier: "Tech Supplies Ltd.",
-    quantity: 45,
-    reorderPoint: 25,
-    category: "Electronics",
-  },
-  {
-    id: "ITM-005",
-    name: "Desk Organizers",
-    supplier: "Office Supplies Co.",
-    quantity: 200,
-    reorderPoint: 50,
-    category: "Office Supplies",
-  },
-  {
-    id: "ITM-006",
-    name: "Whiteboards",
-    supplier: "Office Supplies Co.",
-    quantity: 8,
-    reorderPoint: 10,
-    category: "Office Supplies",
-  },
-  {
-    id: "ITM-007",
-    name: "Filing Cabinets",
-    supplier: "Office Supplies Co.",
-    quantity: 12,
-    reorderPoint: 15,
-    category: "Furniture",
-  },
-]
+// Define interfaces for the data
+interface InventoryItem {
+  id: string;
+  name: string;
+  supplier: string;
+  quantity: number;
+  reorderPoint: number;
+  category: string;
+}
 
-// Mock suppliers data
-const suppliers = [
-  { id: "SUP-001", name: "Office Supplies Co." },
-  { id: "SUP-002", name: "Lighting Solutions Inc." },
-  { id: "SUP-003", name: "Tech Supplies Ltd." },
-  { id: "SUP-004", name: "Furniture Plus" },
-  { id: "SUP-005", name: "Business Supplies Inc." },
-]
+interface Supplier {
+  id: string;
+  name: string;
+}
 
-// Mock categories
-const categories = ["Furniture", "Lighting", "Electronics", "Office Supplies"]
+interface Category {
+  id: string;
+  name: string;
+}
 
 export default function InventoryPage() {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState("all")
-  const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false)
-  const { toast } = useToast()
-
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [newItem, setNewItem] = useState({
     name: "",
     supplier: "",
     quantity: "",
     reorderPoint: "",
     category: "",
-  })
+  });
+
+  // Fetch data from backend on mount
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchData = async () => {
+      try {
+        const idToken = await user.getIdToken();
+
+        // Fetch inventory items
+        const itemsResponse = await fetch("http://localhost:4000/api/inventory-items", {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (!itemsResponse.ok) throw new Error("Failed to fetch inventory items");
+        const itemsData = await itemsResponse.json();
+        setInventoryItems(itemsData);
+
+        // Fetch suppliers
+        const suppliersResponse = await fetch("http://localhost:4000/api/suppliers", {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (!suppliersResponse.ok) throw new Error("Failed to fetch suppliers");
+        const suppliersData = await suppliersResponse.json();
+        setSuppliers(suppliersData);
+
+        // Fetch categories
+        const categoriesResponse = await fetch("http://localhost:4000/api/categories", {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (!categoriesResponse.ok) throw new Error("Failed to fetch categories");
+        const categoriesData = await categoriesResponse.json();
+        setCategories(categoriesData);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load inventory data.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchData();
+  }, [user, toast]);
 
   // Filter inventory based on search query and category filter
-  const filteredItems = inventoryItems.filter((item) => {
+  const filteredItems = inventoryItems.filter((item: InventoryItem) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.supplier.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.id.toLowerCase().includes(searchQuery.toLowerCase())
+      item.id.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
-    const matchesCategory = categoryFilter === "all" || item.category === categoryFilter
+  const handleAddItem = async () => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to add items.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    return matchesSearch && matchesCategory
-  })
-
-  const handleAddItem = () => {
-    // Validate form
     if (!newItem.name || !newItem.supplier || !newItem.quantity || !newItem.reorderPoint || !newItem.category) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    // In a real app, this would be an API call
-    toast({
-      title: "Item Added",
-      description: `${newItem.name} has been added to inventory successfully.`,
-    })
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch("http://localhost:4000/api/inventory-items", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify(newItem),
+      });
 
-    // Reset form and close dialog
-    setNewItem({
-      name: "",
-      supplier: "",
-      quantity: "",
-      reorderPoint: "",
-      category: "",
-    })
-    setIsAddItemDialogOpen(false)
-  }
+      if (!response.ok) throw new Error("Failed to add item");
+
+      const addedItem: InventoryItem = await response.json();
+      setInventoryItems((prev: InventoryItem[]) => [...prev, addedItem]);
+      toast({
+        title: "Item Added",
+        description: `${newItem.name} has been added to inventory successfully.`,
+      });
+
+      setNewItem({ name: "", supplier: "", quantity: "", reorderPoint: "", category: "" });
+      setIsAddItemDialogOpen(false);
+    } catch (error) {
+      console.error("Error adding item:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add item to inventory.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -165,9 +195,7 @@ export default function InventoryPage() {
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="name" className="text-right">
-                    Item Name*
-                  </Label>
+                  <Label htmlFor="name" className="text-right">Item Name*</Label>
                   <Input
                     id="name"
                     value={newItem.name}
@@ -176,11 +204,8 @@ export default function InventoryPage() {
                     placeholder="Enter item name"
                   />
                 </div>
-
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="supplier" className="text-right">
-                    Supplier*
-                  </Label>
+                  <Label htmlFor="supplier" className="text-right">Supplier*</Label>
                   <Select
                     value={newItem.supplier}
                     onValueChange={(value) => setNewItem({ ...newItem, supplier: value })}
@@ -189,7 +214,7 @@ export default function InventoryPage() {
                       <SelectValue placeholder="Select supplier" />
                     </SelectTrigger>
                     <SelectContent>
-                      {suppliers.map((supplier) => (
+                      {suppliers.map((supplier: Supplier) => (
                         <SelectItem key={supplier.id} value={supplier.name}>
                           {supplier.name}
                         </SelectItem>
@@ -197,11 +222,8 @@ export default function InventoryPage() {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="category" className="text-right">
-                    Category*
-                  </Label>
+                  <Label htmlFor="category" className="text-right">Category*</Label>
                   <Select
                     value={newItem.category}
                     onValueChange={(value) => setNewItem({ ...newItem, category: value })}
@@ -210,19 +232,16 @@ export default function InventoryPage() {
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {category}
+                      {categories.map((category: Category) => (
+                        <SelectItem key={category.id} value={category.name}>
+                          {category.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="quantity" className="text-right">
-                    Quantity*
-                  </Label>
+                  <Label htmlFor="quantity" className="text-right">Quantity*</Label>
                   <Input
                     id="quantity"
                     type="number"
@@ -232,11 +251,8 @@ export default function InventoryPage() {
                     placeholder="Enter quantity"
                   />
                 </div>
-
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="reorderPoint" className="text-right">
-                    Reorder Point*
-                  </Label>
+                  <Label htmlFor="reorderPoint" className="text-right">Reorder Point*</Label>
                   <Input
                     id="reorderPoint"
                     type="number"
@@ -248,9 +264,7 @@ export default function InventoryPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddItemDialogOpen(false)}>
-                  Cancel
-                </Button>
+                <Button variant="outline" onClick={() => setIsAddItemDialogOpen(false)}>Cancel</Button>
                 <Button onClick={handleAddItem}>Add Item</Button>
               </DialogFooter>
             </DialogContent>
@@ -275,9 +289,9 @@ export default function InventoryPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category} value={category}>
-                  {category}
+              {categories.map((category: Category) => (
+                <SelectItem key={category.id} value={category.name}>
+                  {category.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -299,7 +313,7 @@ export default function InventoryPage() {
             </TableHeader>
             <TableBody>
               {filteredItems.length > 0 ? (
-                filteredItems.map((item) => (
+                filteredItems.map((item: InventoryItem) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.id}</TableCell>
                     <TableCell>{item.name}</TableCell>
@@ -322,9 +336,7 @@ export default function InventoryPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
-                    No results found.
-                  </TableCell>
+                  <TableCell colSpan={6} className="h-24 text-center">No results found.</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -332,6 +344,5 @@ export default function InventoryPage() {
         </div>
       </div>
     </DashboardLayout>
-  )
+  );
 }
-

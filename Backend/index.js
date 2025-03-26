@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
-const serviceAccount = require("./serviceAccountKey.json");
+const serviceAccount = require("./publicAccountKey.json");
 
 // Initialize Firebase Admin SDK with Firestore
 admin.initializeApp({
@@ -176,6 +176,81 @@ app.put("/api/notification-settings", authenticateToken, async (req, res) => {
   } catch (error) {
     console.error("Error updating notification settings in Firestore:", error);
     res.status(500).json({ message: "Failed to update notification settings" });
+  }
+});
+
+// NEW ENDPOINTS APPENDED BELOW
+
+// Get all suppliers (global)
+app.get("/api/suppliers", authenticateToken, async (req, res) => {
+  try {
+    const suppliersRef = db.collection("suppliers");
+    const snapshot = await suppliersRef.get();
+    const suppliers = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      name: doc.data().name,
+    }));
+    res.status(200).json(suppliers);
+  } catch (error) {
+    console.error("Error fetching suppliers:", error);
+    res.status(500).json({ message: "Failed to fetch suppliers" });
+  }
+});
+
+// Get all categories (global)
+app.get("/api/categories", authenticateToken, async (req, res) => {
+  try {
+    const categoriesRef = db.collection("categories");
+    const snapshot = await categoriesRef.get();
+    const categories = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      name: doc.data().name,
+    }));
+    res.status(200).json(categories);
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    res.status(500).json({ message: "Failed to fetch categories" });
+  }
+});
+
+// Get all inventory items (global)
+app.get("/api/inventory-items", authenticateToken, async (req, res) => {
+  try {
+    const inventoryRef = db.collection("inventoryItems");
+    const snapshot = await inventoryRef.get();
+    const items = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    res.status(200).json(items);
+  } catch (error) {
+    console.error("Error fetching inventory items:", error);
+    res.status(500).json({ message: "Failed to fetch inventory items" });
+  }
+});
+
+// Add a new inventory item (global)
+app.post("/api/inventory-items", authenticateToken, async (req, res) => {
+  const { name, supplier, quantity, reorderPoint, category } = req.body;
+
+  if (!name || !supplier || !quantity || !reorderPoint || !category) {
+    return res.status(400).json({ message: "Missing required fields" });
+  }
+
+  try {
+    const inventoryRef = db.collection("inventoryItems");
+    const newItem = {
+      name,
+      supplier,
+      quantity: parseInt(quantity),
+      reorderPoint: parseInt(reorderPoint),
+      category,
+    };
+    const docRef = await inventoryRef.add(newItem);
+    res.status(201).json({ id: docRef.id, ...newItem });
+  } catch (error) {
+    console.error("Error adding inventory item:", error);
+    res.status(500).json({ message: "Failed to add inventory item" });
   }
 });
 
