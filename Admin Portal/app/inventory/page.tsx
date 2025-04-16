@@ -37,6 +37,7 @@ import { useAuth } from "@/lib/auth-provider";
 // Define interfaces for the data
 interface InventoryItem {
   id: string;
+  itemId: string;
   name: string;
   supplier: string;
   quantity: number;
@@ -87,7 +88,7 @@ export default function InventoryPage() {
         const itemsData = await itemsResponse.json();
         setInventoryItems(itemsData);
 
-        // Fetch suppliers
+        // Fetch suppliers from user_details (typeOfUser: "suppliers")
         const suppliersResponse = await fetch("http://localhost:4000/api/suppliers", {
           headers: { Authorization: `Bearer ${idToken}` },
         });
@@ -120,7 +121,7 @@ export default function InventoryPage() {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.supplier.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.id.toLowerCase().includes(searchQuery.toLowerCase());
+      item.itemId.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
@@ -313,32 +314,8 @@ export default function InventoryPage() {
             </TableHeader>
             <TableBody>
               {filteredItems.length > 0 ? (
-                filteredItems.map((item: InventoryItem) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.id}</TableCell>
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell>{item.supplier}</TableCell>
-                    <TableCell>{item.category}</TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell>
-                      {item.quantity <= item.reorderPoint ? (
-                        <div className="flex items-center">
-                          <AlertTriangle className="mr-2 h-4 w-4 text-yellow-500" />
-                          <span className="text-yellow-600">Low Stock</span>
-                        </div>
-                      ) : (
-                        <Badge variant="outline" className="bg-green-100 text-green-800">
-                          In Stock
-                        </Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">No results found.</TableCell>
-                </TableRow>
-              )}
+                filteredItems.map((item: InventoryItem) => (<TableRow key={item.itemId}><TableCell className="font-medium">{item.itemId}</TableCell><TableCell>{item.name}</TableCell><TableCell>{item.supplier}</TableCell><TableCell>{item.category}</TableCell><TableCell>{item.quantity}</TableCell><TableCell>{item.quantity <= item.reorderPoint ? (<div className="flex items-center"><AlertTriangle className="mr-2 h-4 w-4 text-yellow-500" /><span className="text-yellow-600">Low Stock</span></div>) : (<Badge variant="outline" className="bg-green-100 text-green-800">In Stock</Badge>)}</TableCell></TableRow>))
+              ) : (<TableRow><TableCell colSpan={6} className="h-24 text-center">No results found.</TableCell></TableRow>)}
             </TableBody>
           </Table>
         </div>

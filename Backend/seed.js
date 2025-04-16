@@ -1,111 +1,80 @@
 const admin = require("firebase-admin");
 const serviceAccount = require("./publicAccountKey.json");
 
-// Initialize Firebase Admin SDK
+// Initialize Firebase Admin SDK with Firestore
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
 const db = admin.firestore();
 
-async function seedDatabase() {
+async function seedData() {
   try {
-    // 1. Populate the `suppliers` collection
-    const suppliers = [
-      { name: "Office Supplies Co." },
-      { name: "Lighting Solutions Inc." },
-      { name: "Tech Supplies Ltd." },
-      { name: "Furniture Plus" },
-      { name: "Business Supplies Inc." },
-    ];
-
-    console.log("Populating suppliers...");
-    for (const supplier of suppliers) {
-      await db.collection("suppliers").add(supplier);
-      console.log(`Added supplier: ${supplier.name}`);
+    // Clear existing data (optional, remove if you want to append)
+    const collections = ["sales_report", "user_details", "inventoryItems"];
+    for (const collection of collections) {
+      const snapshot = await db.collection(collection).get();
+      const deletePromises = snapshot.docs.map((doc) => doc.ref.delete());
+      await Promise.all(deletePromises);
+      console.log(`Cleared ${collection} collection`);
     }
 
-    // 2. Populate the `categories` collection
-    const categories = [
-      { name: "Furniture" },
-      { name: "Lighting" },
-      { name: "Electronics" },
-      { name: "Office Supplies" },
-    ];
+    // Seed sales_report collection
+    const salesReports = [
+      // Current Week (April 6–11, 2025)
+      { retailerId: "RT-001", itemId: "ITM-001", noOfUnitsSold: 10, sales: 900, date: "2025-04-06T09:00:00Z", categoryOfItem: "Office", season: "Spring" },
+      { retailerId: "RT-002", itemId: "ITM-002", noOfUnitsSold: 15, sales: 375, date: "2025-04-07T14:30:00Z", categoryOfItem: "Desk", season: "Spring" },
+      { retailerId: "RT-003", itemId: "ITM-003", noOfUnitsSold: 5, sales: 1500, date: "2025-04-08T11:15:00Z", categoryOfItem: "Monitors", season: "Spring" },
+      { retailerId: "RT-001", itemId: "ITM-004", noOfUnitsSold: 20, sales: 1000, date: "2025-04-09T16:00:00Z", categoryOfItem: "Keyboards", season: "Spring" },
+      { retailerId: "RT-004", itemId: "ITM-005", noOfUnitsSold: 25, sales: 225, date: "2025-04-10T10:45:00Z", categoryOfItem: "Desk", season: "Spring" },
+      { retailerId: "RT-002", itemId: "ITM-006", noOfUnitsSold: 8, sales: 600, date: "2025-04-11T13:00:00Z", categoryOfItem: "Whiteboards", season: "Spring" },
 
-    console.log("Populating categories...");
-    for (const category of categories) {
-      await db.collection("categories").add(category);
-      console.log(`Added category: ${category.name}`);
+      // Current Month (April 1–11, 2025)
+      { retailerId: "RT-003", itemId: "ITM-007", noOfUnitsSold: 12, sales: 1800, date: "2025-04-01T15:30:00Z", categoryOfItem: "Filing", season: "Spring" },
+      { retailerId: "RT-004", itemId: "ITM-001", noOfUnitsSold: 18, sales: 1620, date: "2025-04-02T09:30:00Z", categoryOfItem: "Office", season: "Spring" },
+      { retailerId: "RT-001", itemId: "ITM-002", noOfUnitsSold: 22, sales: 550, date: "2025-04-03T14:00:00Z", categoryOfItem: "Desk", season: "Spring" },
+
+      // Past Month (March 2025) for Quarter filter
+      { retailerId: "RT-002", itemId: "ITM-003", noOfUnitsSold: 7, sales: 2100, date: "2025-03-15T11:00:00Z", categoryOfItem: "Monitors", season: "Spring" },
+      { retailerId: "RT-003", itemId: "ITM-004", noOfUnitsSold: 14, sales: 700, date: "2025-03-20T16:30:00Z", categoryOfItem: "Keyboards", season: "Spring" },
+    ];
+    for (const report of salesReports) {
+      await db.collection("sales_report").add(report);
+      console.log(`Added sales report: ${JSON.stringify(report)}`);
     }
 
-    // 3. Populate the `inventoryItems` collection
+    // Seed user_details for retailers
+    const retailers = [
+      { id: "RT-001", companyName: "City Electronics", typeOfUser: "retailers" },
+      { id: "RT-002", companyName: "Office Depot", typeOfUser: "retailers" },
+      { id: "RT-003", companyName: "Tech World", typeOfUser: "retailers" },
+      { id: "RT-004", companyName: "Furniture Plus", typeOfUser: "retailers" },
+    ];
+    for (const retailer of retailers) {
+      await db.collection("user_details").doc(retailer.id).set(retailer);
+      console.log(`Added retailer: ${JSON.stringify(retailer)}`);
+    }
+
+    // Seed inventoryItems
     const inventoryItems = [
-      {
-        name: "Office Chairs",
-        supplier: "Office Supplies Co.",
-        quantity: 85,
-        reorderPoint: 20,
-        category: "Furniture",
-      },
-      {
-        name: "Desk Lamps",
-        supplier: "Lighting Solutions Inc.",
-        quantity: 120,
-        reorderPoint: 30,
-        category: "Lighting",
-      },
-      {
-        name: "Monitors",
-        supplier: "Tech Supplies Ltd.",
-        quantity: 15,
-        reorderPoint: 20,
-        category: "Electronics",
-      },
-      {
-        name: "Keyboards",
-        supplier: "Tech Supplies Ltd.",
-        quantity: 45,
-        reorderPoint: 25,
-        category: "Electronics",
-      },
-      {
-        name: "Desk Organizers",
-        supplier: "Office Supplies Co.",
-        quantity: 200,
-        reorderPoint: 50,
-        category: "Office Supplies",
-      },
-      {
-        name: "Whiteboards",
-        supplier: "Office Supplies Co.",
-        quantity: 8,
-        reorderPoint: 10,
-        category: "Office Supplies",
-      },
-      {
-        name: "Filing Cabinets",
-        supplier: "Office Supplies Co.",
-        quantity: 12,
-        reorderPoint: 15,
-        category: "Furniture",
-      },
+      { itemId: "ITM-001", name: "Office Chairs", supplier: "Supplier A", quantity: 100, reorderPoint: 20, category: "Furniture" },
+      { itemId: "ITM-002", name: "Desk Lamps", supplier: "Supplier B", quantity: 50, reorderPoint: 10, category: "Lighting" },
+      { itemId: "ITM-003", name: "Monitors", supplier: "Supplier C", quantity: 30, reorderPoint: 5, category: "Electronics" },
+      { itemId: "ITM-004", name: "Keyboards", supplier: "Supplier D", quantity: 80, reorderPoint: 15, category: "Accessories" },
+      { itemId: "ITM-005", name: "Desk Organizers", supplier: "Supplier E", quantity: 200, reorderPoint: 30, category: "Stationery" },
+      { itemId: "ITM-006", name: "Whiteboards", supplier: "Supplier F", quantity: 20, reorderPoint: 5, category: "Office" },
+      { itemId: "ITM-007", name: "Filing Cabinets", supplier: "Supplier G", quantity: 15, reorderPoint: 3, category: "Storage" },
     ];
-
-    console.log("Populating inventory items...");
     for (const item of inventoryItems) {
-      await db.collection("inventoryItems").add(item);
-      console.log(`Added item: ${item.name}`);
+      await db.collection("inventoryItems").doc(item.itemId).set(item);
+      console.log(`Added inventory item: ${JSON.stringify(item)}`);
     }
 
-    console.log("Database seeding completed successfully!");
+    console.log("Seeding completed successfully!");
   } catch (error) {
-    console.error("Error seeding database:", error);
-  } finally {
-    // Exit the process after completion
-    process.exit();
+    console.error("Error seeding data:", error);
   }
 }
 
 // Run the seeding function
-seedDatabase();
+seedData();

@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { DashboardLayout } from "@/components/dashboard-layout"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Plus, BarChart } from "lucide-react"
+import { useState, useEffect } from "react";
+import { DashboardLayout } from "@/components/dashboard-layout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Search, Plus, BarChart } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,180 +15,167 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast"
-import { format } from "date-fns"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/lib/auth-provider";
 
-// Mock sales report data
-const salesReports = [
-  {
-    id: "SR-1001",
-    retailerId: "RT-001",
-    retailerName: "City Electronics",
-    product: "Office Chairs",
-    quantity: 15,
-    timestamp: "2023-03-15T09:30:00",
-    amount: 1350.0,
-  },
-  {
-    id: "SR-1002",
-    retailerId: "RT-002",
-    retailerName: "Office Depot",
-    product: "Desk Lamps",
-    quantity: 30,
-    timestamp: "2023-03-14T14:45:00",
-    amount: 750.0,
-  },
-  {
-    id: "SR-1003",
-    retailerId: "RT-003",
-    retailerName: "Tech World",
-    product: "Monitors",
-    quantity: 10,
-    timestamp: "2023-03-13T11:20:00",
-    amount: 3000.0,
-  },
-  {
-    id: "SR-1004",
-    retailerId: "RT-001",
-    retailerName: "City Electronics",
-    product: "Keyboards",
-    quantity: 25,
-    timestamp: "2023-03-12T16:15:00",
-    amount: 1250.0,
-  },
-  {
-    id: "SR-1005",
-    retailerId: "RT-004",
-    retailerName: "Furniture Plus",
-    product: "Desk Organizers",
-    quantity: 50,
-    timestamp: "2023-03-11T10:00:00",
-    amount: 450.0,
-  },
-  {
-    id: "SR-1006",
-    retailerId: "RT-002",
-    retailerName: "Office Depot",
-    product: "Whiteboards",
-    quantity: 5,
-    timestamp: "2023-03-10T13:30:00",
-    amount: 750.0,
-  },
-  {
-    id: "SR-1007",
-    retailerId: "RT-003",
-    retailerName: "Tech World",
-    product: "Filing Cabinets",
-    quantity: 8,
-    timestamp: "2023-03-09T15:45:00",
-    amount: 1200.0,
-  },
-]
+// Interface for sales report data
+interface SalesReport {
+  id: string;
+  retailerId: string;
+  retailerName: string;
+  product: string;
+  quantity: number;
+  amount: number;
+  dateTime: string;
+}
 
-// Mock retailers data
-const retailers = [
-  { id: "RT-001", name: "City Electronics" },
-  { id: "RT-002", name: "Office Depot" },
-  { id: "RT-003", name: "Tech World" },
-  { id: "RT-004", name: "Furniture Plus" },
-  { id: "RT-005", name: "Business Supplies Inc." },
-]
-
-// Mock products data
-const products = [
-  { id: "P-001", name: "Office Chairs" },
-  { id: "P-002", name: "Desk Lamps" },
-  { id: "P-003", name: "Monitors" },
-  { id: "P-004", name: "Keyboards" },
-  { id: "P-005", name: "Desk Organizers" },
-  { id: "P-006", name: "Whiteboards" },
-  { id: "P-007", name: "Filing Cabinets" },
-]
+interface NewReport {
+  retailerId: string;
+  product: string;
+  quantity: string;
+  amount: string;
+}
 
 export default function SalesReportsPage() {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [isNewReportDialogOpen, setIsNewReportDialogOpen] = useState(false)
-  const [isCumulativeReportDialogOpen, setIsCumulativeReportDialogOpen] = useState(false)
-  const [timePeriod, setTimePeriod] = useState("week")
-  const { toast } = useToast()
-
-  const [newReport, setNewReport] = useState({
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [timePeriod, setTimePeriod] = useState("week");
+  const [salesReports, setSalesReports] = useState<SalesReport[]>([]);
+  const [isNewReportDialogOpen, setIsNewReportDialogOpen] = useState(false);
+  const [isCumulativeReportDialogOpen, setIsCumulativeReportDialogOpen] = useState(false);
+  const [newReport, setNewReport] = useState<NewReport>({
     retailerId: "",
     product: "",
     quantity: "",
     amount: "",
-  })
+  });
+
+  // Fetch sales reports from backend
+  const fetchData = async () => {
+    if (!user) return;
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch(`http://localhost:4000/api/sales-reports?period=${timePeriod}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch sales reports");
+      const data = await response.json();
+      setSalesReports(data);
+    } catch (error) {
+      console.error("Error fetching sales reports:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load sales reports.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [user, toast, timePeriod]);
 
   // Filter reports based on search query
-  const filteredReports = salesReports.filter((report) => {
-    return (
-      report.retailerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      report.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      report.retailerId.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  })
+  const filteredReports = salesReports.filter((report) =>
+    report.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    report.retailerId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    report.retailerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    report.product.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   // Generate cumulative report based on time period
   const generateCumulativeReport = () => {
-    // In a real app, this would filter by the actual date range
-    // For this mock, we'll just use all the data
+    const totalAmount = salesReports.reduce((total, report) => total + report.amount, 0);
+    const productSummary = salesReports.reduce((acc, report) => {
+      if (!acc[report.product]) {
+        acc[report.product] = { quantity: 0, amount: 0 };
+      }
+      acc[report.product].quantity += report.quantity;
+      acc[report.product].amount += report.amount;
+      return acc;
+    }, {} as Record<string, { quantity: number; amount: number }>);
 
-    // Group by product
-    const productSummary = salesReports.reduce(
-      (acc, report) => {
-        if (!acc[report.product]) {
-          acc[report.product] = {
-            quantity: 0,
-            amount: 0,
-          }
-        }
-        acc[report.product].quantity += report.quantity
-        acc[report.product].amount += report.amount
-        return acc
-      },
-      {} as Record<string, { quantity: number; amount: number }>,
-    )
+    return { totalAmount, productSummary };
+  };
 
-    // Calculate total
-    const totalSales = Object.values(productSummary).reduce((total, item) => total + item.amount, 0)
-
-    return {
-      totalSales,
-      productSummary,
+  const handleSubmitReport = async () => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to submit reports.",
+        variant: "destructive",
+      });
+      return;
     }
-  }
 
-  const handleSubmitReport = () => {
-    // Validate form
     if (!newReport.retailerId || !newReport.product || !newReport.quantity || !newReport.amount) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    // In a real app, this would be an API call
-    toast({
-      title: "Report Submitted",
-      description: `Sales report for ${newReport.product} has been submitted successfully.`,
-    })
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch("http://localhost:4000/api/sales-reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          retailerId: newReport.retailerId,
+          itemId: `ITM-${String(Math.floor(Math.random() * 7) + 1).padStart(3, "0")}`, // Random itemId for demo
+          noOfUnitsSold: parseInt(newReport.quantity),
+          sales: parseFloat(newReport.amount),
+          date: new Date().toISOString(),
+          categoryOfItem: newReport.product.split(" ")[0], // Simplified category
+          season: getSeason(new Date()),
+        }),
+      });
 
-    // Reset form and close dialog
-    setNewReport({
-      retailerId: "",
-      product: "",
-      quantity: "",
-      amount: "",
-    })
-    setIsNewReportDialogOpen(false)
-  }
+      if (!response.ok) throw new Error("Failed to submit report");
+      toast({
+        title: "Report Submitted",
+        description: `Sales report for ${newReport.product} has been submitted successfully.`,
+      });
 
-  const cumulativeReport = generateCumulativeReport()
+      setNewReport({
+        retailerId: "",
+        product: "",
+        quantity: "",
+        amount: "",
+      });
+      setIsNewReportDialogOpen(false);
+      await fetchData(); // Refresh data after successful submission
+    } catch (error) {
+      console.error("Error submitting report:", error);
+      toast({
+        title: "Error",
+        description: "Failed to submit sales report.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Helper function to determine season
+  const getSeason = (date: Date) => {
+    const month = date.getMonth() + 1;
+    if (month >= 3 && month <= 5) return "Spring";
+    if (month >= 6 && month <= 8) return "Summer";
+    if (month >= 9 && month <= 11) return "Fall";
+    return "Winter";
+  };
+
+  const cumulativeReport = generateCumulativeReport();
 
   return (
     <DashboardLayout>
@@ -196,81 +183,64 @@ export default function SalesReportsPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Sales Reports</h1>
           <div className="flex gap-2">
-            {/* Cumulative Report Button */}
-            <div className="flex items-center gap-2">
-              <Select value={timePeriod} onValueChange={setTimePeriod}>
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="Time Period" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="day">Today</SelectItem>
-                  <SelectItem value="week">This Week</SelectItem>
-                  <SelectItem value="month">This Month</SelectItem>
-                  <SelectItem value="quarter">This Quarter</SelectItem>
-                  <SelectItem value="year">This Year</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Dialog open={isCumulativeReportDialogOpen} onOpenChange={setIsCumulativeReportDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline">
-                    <BarChart className="mr-2 h-4 w-4" />
-                    Cumulative Report
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-3xl">
-                  <DialogHeader>
-                    <DialogTitle>Cumulative Sales Report</DialogTitle>
-                    <DialogDescription>
-                      Sales summary for the selected time period:{" "}
-                      {timePeriod === "day"
-                        ? "Today"
-                        : timePeriod === "week"
-                          ? "This Week"
-                          : timePeriod === "month"
-                            ? "This Month"
-                            : timePeriod === "quarter"
-                              ? "This Quarter"
-                              : "This Year"}
-                    </DialogDescription>
-                  </DialogHeader>
-
-                  <div className="space-y-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Total Sales</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-3xl font-bold">${cumulativeReport.totalSales.toFixed(2)}</p>
-                      </CardContent>
-                    </Card>
-
-                    <div className="rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Product</TableHead>
-                            <TableHead>Quantity Sold</TableHead>
-                            <TableHead className="text-right">Amount</TableHead>
+            <Select value={timePeriod} onValueChange={setTimePeriod}>
+              <SelectTrigger className="w-32">
+                <SelectValue>{timePeriod === "week" ? "This Week" : timePeriod}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="day">Today</SelectItem>
+                <SelectItem value="week">This Week</SelectItem>
+                <SelectItem value="month">This Month</SelectItem>
+                <SelectItem value="quarter">This Quarter</SelectItem>
+                <SelectItem value="year">This Year</SelectItem>
+              </SelectContent>
+            </Select>
+            <Dialog open={isCumulativeReportDialogOpen} onOpenChange={setIsCumulativeReportDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <BarChart className="mr-2 h-4 w-4" />
+                  Cumulative Report
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>Cumulative Sales Report</DialogTitle>
+                  <DialogDescription>
+                    Sales summary for {timePeriod === "day" ? "Today" : timePeriod === "week" ? "This Week" : timePeriod === "month" ? "This Month" : timePeriod === "quarter" ? "This Quarter" : "This Year"}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Total Sales</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-3xl font-bold">${cumulativeReport.totalAmount.toFixed(2)}</p>
+                    </CardContent>
+                  </Card>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Product</TableHead>
+                          <TableHead>Quantity Sold</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {Object.entries(cumulativeReport.productSummary).map(([product, data]) => (
+                          <TableRow key={product}>
+                            <TableCell className="font-medium">{product}</TableCell>
+                            <TableCell>{data.quantity}</TableCell>
+                            <TableCell className="text-right">${data.amount.toFixed(2)}</TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {Object.entries(cumulativeReport.productSummary).map(([product, data]) => (
-                            <TableRow key={product}>
-                              <TableCell className="font-medium">{product}</TableCell>
-                              <TableCell>{data.quantity}</TableCell>
-                              <TableCell className="text-right">${data.amount.toFixed(2)}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            {/* New Report Button */}
+                </div>
+              </DialogContent>
+            </Dialog>
             <Dialog open={isNewReportDialogOpen} onOpenChange={setIsNewReportDialogOpen}>
               <DialogTrigger asChild>
                 <Button>
@@ -285,9 +255,7 @@ export default function SalesReportsPage() {
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="retailerId" className="text-right">
-                      Retailer*
-                    </Label>
+                    <Label htmlFor="retailerId" className="text-right">Retailer*</Label>
                     <Select
                       value={newReport.retailerId}
                       onValueChange={(value) => setNewReport({ ...newReport, retailerId: value })}
@@ -296,7 +264,12 @@ export default function SalesReportsPage() {
                         <SelectValue placeholder="Select retailer" />
                       </SelectTrigger>
                       <SelectContent>
-                        {retailers.map((retailer) => (
+                        {[
+                          { id: "RT-001", name: "City Electronics" },
+                          { id: "RT-002", name: "Office Depot" },
+                          { id: "RT-003", name: "Tech World" },
+                          { id: "RT-004", name: "Furniture Plus" },
+                        ].map((retailer) => (
                           <SelectItem key={retailer.id} value={retailer.id}>
                             {retailer.name} ({retailer.id})
                           </SelectItem>
@@ -304,11 +277,8 @@ export default function SalesReportsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="product" className="text-right">
-                      Product*
-                    </Label>
+                    <Label htmlFor="product" className="text-right">Product*</Label>
                     <Select
                       value={newReport.product}
                       onValueChange={(value) => setNewReport({ ...newReport, product: value })}
@@ -317,7 +287,15 @@ export default function SalesReportsPage() {
                         <SelectValue placeholder="Select product" />
                       </SelectTrigger>
                       <SelectContent>
-                        {products.map((product) => (
+                        {[
+                          { id: "ITM-001", name: "Office Chairs" },
+                          { id: "ITM-002", name: "Desk Lamps" },
+                          { id: "ITM-003", name: "Monitors" },
+                          { id: "ITM-004", name: "Keyboards" },
+                          { id: "ITM-005", name: "Desk Organizers" },
+                          { id: "ITM-006", name: "Whiteboards" },
+                          { id: "ITM-007", name: "Filing Cabinets" },
+                        ].map((product) => (
                           <SelectItem key={product.id} value={product.name}>
                             {product.name}
                           </SelectItem>
@@ -325,11 +303,8 @@ export default function SalesReportsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="quantity" className="text-right">
-                      Quantity*
-                    </Label>
+                    <Label htmlFor="quantity" className="text-right">Quantity*</Label>
                     <Input
                       id="quantity"
                       type="number"
@@ -339,11 +314,8 @@ export default function SalesReportsPage() {
                       placeholder="Enter quantity"
                     />
                   </div>
-
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="amount" className="text-right">
-                      Amount ($)*
-                    </Label>
+                    <Label htmlFor="amount" className="text-right">Amount ($)*</Label>
                     <Input
                       id="amount"
                       type="number"
@@ -356,9 +328,7 @@ export default function SalesReportsPage() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsNewReportDialogOpen(false)}>
-                    Cancel
-                  </Button>
+                  <Button variant="outline" onClick={() => setIsNewReportDialogOpen(false)}>Cancel</Button>
                   <Button onClick={handleSubmitReport}>Submit Report</Button>
                 </DialogFooter>
               </DialogContent>
@@ -367,17 +337,15 @@ export default function SalesReportsPage() {
         </div>
 
         {/* Search */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="relative w-full md:w-64">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search reports..."
-              className="w-full pl-8"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+        <div className="relative w-full md:w-64 mb-4">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search reports..."
+            className="w-full pl-8"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
 
         {/* Reports table */}
@@ -404,7 +372,7 @@ export default function SalesReportsPage() {
                     <TableCell>{report.product}</TableCell>
                     <TableCell>{report.quantity}</TableCell>
                     <TableCell>${report.amount.toFixed(2)}</TableCell>
-                    <TableCell>{format(new Date(report.timestamp), "MMM dd, yyyy HH:mm")}</TableCell>
+                    <TableCell>{format(new Date(report.dateTime), "MMM dd, yyyy HH:mm")}</TableCell>
                   </TableRow>
                 ))
               ) : (
@@ -419,6 +387,5 @@ export default function SalesReportsPage() {
         </div>
       </div>
     </DashboardLayout>
-  )
+  );
 }
-
