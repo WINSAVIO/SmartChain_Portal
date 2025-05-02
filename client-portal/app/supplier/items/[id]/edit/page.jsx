@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Package,
@@ -12,24 +12,10 @@ import {
   AlertCircle,
   ArrowLeft,
 } from "lucide-react";
-import { collection, addDoc, getFirestore } from "firebase/firestore";
-import { initializeApp } from "firebase/app";
+import { collection, doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
-// Initialize Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyALh6y3svnXTv3j8qO0nMvkKKinaeNGla0",
-  authDomain: "smartchain-cfffa.firebaseapp.com",
-  projectId: "smartchain-cfffa",
-  storageBucket: "smartchain-cfffa.firebasestorage.app",
-  messagingSenderId: "989621610467",
-  appId: "1:989621610467:web:519cfbcf2e78b9443062d6",
-  measurementId: "G-1YLNHE8ZVZ",
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
-export default function AddItemPage() {
+export default function EditItemPage({ params }) {
   const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
@@ -43,8 +29,8 @@ export default function AddItemPage() {
     manufacturingDate: "",
     specialInstructions: "",
   });
-  const [dragActive, setDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const categories = [
     "Electronics",
@@ -52,6 +38,35 @@ export default function AddItemPage() {
     "Office Supplies",
     "Accessories",
   ];
+
+  useEffect(() => {
+    fetchItem();
+  }, [params.id]);
+
+  const fetchItem = async () => {
+    try {
+      const docRef = doc(db, "items", params.id);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setFormData({
+          ...data,
+          price: data.price.toString(),
+          stock: data.stock.toString(),
+          minStock: data.minStock.toString(),
+        });
+      } else {
+        console.log("No such document!");
+        router.push("/supplier/items");
+      }
+    } catch (error) {
+      console.error("Error fetching item:", error);
+      alert("Failed to fetch item. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -68,18 +83,18 @@ export default function AddItemPage() {
           Number(formData.stock) <= Number(formData.minStock)
             ? "Low Stock"
             : "In Stock",
-        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
-      // Add the item to Firestore
-      const docRef = await addDoc(collection(db, "items"), itemData);
-      console.log("Item added with ID: ", docRef.id);
+      // Update the item in Firestore
+      const docRef = doc(db, "items", params.id);
+      await updateDoc(docRef, itemData);
 
       // Redirect to items page
       router.push("/supplier/items");
     } catch (error) {
-      console.error("Error adding item: ", error);
-      alert("Failed to add item. Please try again.");
+      console.error("Error updating item: ", error);
+      alert("Failed to update item. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -93,15 +108,16 @@ export default function AddItemPage() {
     }));
   };
 
-  const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading item...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -118,11 +134,9 @@ export default function AddItemPage() {
               </button>
               <div>
                 <h1 className="text-xl font-semibold text-gray-800">
-                  Add New Item
+                  Edit Item
                 </h1>
-                <p className="text-sm text-gray-600">
-                  Create a new item in your inventory
-                </p>
+                <p className="text-sm text-gray-600">Update item information</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -136,10 +150,11 @@ export default function AddItemPage() {
               </button>
               <button
                 onClick={handleSubmit}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
+                disabled={isSubmitting}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
-                Save Item
+                {isSubmitting ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </div>

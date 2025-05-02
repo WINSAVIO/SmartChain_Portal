@@ -77,4 +77,8 @@ async function seedData() {
 }
 
 // Run the seeding function
-seedData();
+
+seedDatabase();
+
+//seedData();
+

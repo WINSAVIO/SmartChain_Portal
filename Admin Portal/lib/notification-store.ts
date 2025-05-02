@@ -1,20 +1,22 @@
-import { create } from "zustand"
+import { create } from "zustand";
 
 export type Notification = {
-  id: string
-  message: string
-  timestamp: string
-  read: boolean
-}
+  id: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+};
 
 type NotificationState = {
-  notifications: Notification[]
-  unreadCount: number
-  addNotification: (notification: Omit<Notification, "id" | "timestamp" | "read">) => void
-  markAsRead: (id: string) => void
-  markAllAsRead: () => void
-  fetchNotifications: () => Promise<void>
-}
+  notifications: Notification[];
+  unreadCount: number;
+  addNotification: (
+    notification: Omit<Notification, "id" | "timestamp" | "read">
+  ) => void;
+  markAsRead: (id: string) => void;
+  markAllAsRead: () => void;
+  fetchNotifications: () => Promise<void>;
+};
 
 // Mock notifications data
 const mockNotifications: Notification[] = [
@@ -32,7 +34,7 @@ const mockNotifications: Notification[] = [
   },
   {
     id: "3",
-    message: "Inventory alert: Product SKU-789 is running low",
+    message: "Inventory alert: Product ITM-789 is running low",
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
     read: true,
   },
@@ -42,60 +44,67 @@ const mockNotifications: Notification[] = [
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
     read: true,
   },
-]
+];
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   unreadCount: 0,
 
-  addNotification: (notification) => {
+  addNotification: (
+    notification: Omit<Notification, "id" | "timestamp" | "read">
+  ) => {
     const newNotification: Notification = {
       id: Date.now().toString(),
       ...notification,
       timestamp: new Date().toISOString(),
       read: false,
-    }
+    };
 
-    set((state) => ({
+    set((state: NotificationState) => ({
       notifications: [newNotification, ...state.notifications],
       unreadCount: state.unreadCount + 1,
-    }))
+    }));
   },
 
-  markAsRead: (id) => {
-    set((state) => {
-      const updatedNotifications = state.notifications.map((notification) =>
-        notification.id === id ? { ...notification, read: true } : notification,
-      )
+  markAsRead: (id: string) => {
+    set((state: NotificationState) => {
+      const updatedNotifications = state.notifications.map(
+        (notification: Notification) =>
+          notification.id === id
+            ? { ...notification, read: true }
+            : notification
+      );
 
-      const unreadCount = updatedNotifications.filter((n) => !n.read).length
+      const unreadCount = updatedNotifications.filter(
+        (n: Notification) => !n.read
+      ).length;
 
       return {
         notifications: updatedNotifications,
         unreadCount,
-      }
-    })
+      };
+    });
   },
 
   markAllAsRead: () => {
-    set((state) => ({
-      notifications: state.notifications.map((notification) => ({
+    set((state: NotificationState) => ({
+      notifications: state.notifications.map((notification: Notification) => ({
         ...notification,
         read: true,
       })),
       unreadCount: 0,
-    }))
+    }));
   },
 
   fetchNotifications: async () => {
     // In a real app, this would be an API call
     // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     set({
       notifications: mockNotifications,
-      unreadCount: mockNotifications.filter((n) => !n.read).length,
-    })
+      unreadCount: mockNotifications.filter((n: Notification) => !n.read)
+        .length,
+    });
   },
-}))
-
+}));

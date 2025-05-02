@@ -25,8 +25,8 @@ export default function SupplierLayout({ children }) {
       icon: Package,
     },
     {
-      name: "Orders",
-      href: "/supplier/orders",
+      name: "Requests",
+      href: "/supplier/requests",
       icon: ShoppingCart,
     },
     {
@@ -42,7 +42,7 @@ export default function SupplierLayout({ children }) {
       <div className="fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200">
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-center h-16 border-b border-gray-200">
-            <h1 className="text-xl font-semibold text-gray-800">SmartChain</h1>
+            <h1 className="text-xl font-semibold text-gray-800">Supplier</h1>
           </div>
 
           <nav className="flex-1 p-4 space-y-1">

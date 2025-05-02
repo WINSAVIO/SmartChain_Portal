@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Package,
   Truck,
@@ -9,11 +9,52 @@ import {
   ShoppingCart,
   Calendar,
   ChevronDown,
+  Clock,
+  CheckCircle,
+  Building,
 } from "lucide-react";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 
 export default function DashboardOverview() {
   const [dateRange, setDateRange] = useState("This Month");
   const [purchaseOrderDate, setPurchaseOrderDate] = useState("This Month");
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRequests = async () => {
+      try {
+        setLoading(true);
+        const requestsRef = collection(db, "restock_requests");
+        const q = query(requestsRef, orderBy("dateOfRequest", "desc"));
+
+        const querySnapshot = await getDocs(q);
+        const requestsData = querySnapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            item: {
+              name: data.productName
+            },
+            status: data.states,
+            createdAt: data.dateOfRequest,
+            quantity: data.quantity,
+            price: data.price,
+            retailerId: data.retailerId
+          };
+        });
+
+        setRequests(requestsData);
+      } catch (err) {
+        console.error("Error fetching requests:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRequests();
+  }, []);
 
   const statusCards = [
     { number: 10, label: "Qty", description: "TO BE PACKED", color: "blue" },
@@ -143,53 +184,52 @@ export default function DashboardOverview() {
               </select>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Channel
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Draft
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Confirmed
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Packed
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Shipped
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Invoiced
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    Online Store
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    0
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    0
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    0
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    0
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    0
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="space-y-4">
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                <p className="mt-4 text-gray-600">Loading requests...</p>
+              </div>
+            ) : (
+              requests.map((request) => (
+                <div
+                  key={request.id}
+                  className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                        {getStatusIcon(request.status)}
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900">{request.item.name}</h3>
+                        <p className="text-sm text-gray-500">Quantity: {request.quantity}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-sm text-gray-500">
+                        <Calendar className="w-4 h-4 inline-block mr-1" />
+                        {new Date(request.createdAt).toLocaleDateString()}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        <Building className="w-4 h-4 inline-block mr-1" />
+                        {request.retailerId}
+                      </div>
+                      <div
+                        className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(
+                          request.status
+                        )}`}
+                      >
+                        {request.status}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 text-right text-lg font-semibold text-gray-900">
+                    ₹{(request.price * request.quantity).toFixed(2)}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Package,
@@ -15,31 +15,61 @@ import {
   AlertCircle,
   Building,
 } from "lucide-react";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { toast } from "sonner";
 
 export default function NewOrderPage() {
+  const auth = getAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const itemId = searchParams.get("item");
 
-  // Placeholder data - in a real app this would come from an API
-  const item = itemId
-    ? {
-        id: itemId,
-        name: "Premium Laptop",
-        supplier: "Tech Supplies Inc",
-        price: 1299.99,
-        stock: 5,
-        image: null, // In a real app, this would be an image URL
+  const [item, setItem] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchItem = async () => {
+      try {
+        setLoading(true);
+        if (itemId) {
+          // Create document reference using itemId as the document ID
+          const itemRef = doc(db, "items", itemId);
+          const itemSnap = await getDoc(itemRef);
+
+          if (itemSnap.exists()) {
+            const itemData = {
+              id: itemId, // Use the same ID as the document ID
+              ...itemSnap.data(),
+            };
+            setItem(itemData);
+            // Auto-fill the stock category from the item data
+            setFormData((prev) => ({
+              ...prev,
+              stockCategory: itemData.category || "",
+            }));
+          } else {
+            setError("Item not found");
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching item:", err);
+        setError("Failed to load item details");
+      } finally {
+        setLoading(false);
       }
-    : null;
+    };
+
+    fetchItem();
+  }, [itemId]);
 
   const [formData, setFormData] = useState({
-    productName: item?.name || "",
     quantity: 1,
-    category: "",
     urgency: "Normal",
-    note: "",
-    dateRequested: new Date().toISOString().split("T")[0],
+    shortNote: "",
+    stockCategory: "",
   });
 
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -52,217 +82,260 @@ export default function NewOrderPage() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // In a real app, this would send data to an API
-    console.log("Stock request submitted:", formData);
-    setShowConfirmation(true);
-    // Hide confirmation after 2 seconds and redirect
-    setTimeout(() => {
-      router.push("/retailer/browse");
-    }, 2000);
+    try {
+      // Check if user is authenticated
+      if (!auth.currentUser) {
+        throw new Error("Please log in to create a request");
+      }
+
+      // Validate required fields
+      if (!item || !formData.quantity || !formData.stockCategory) {
+        throw new Error("Missing required fields");
+      }
+
+      // Generate ID (RR-00X format)
+      const requestsRef = collection(db, "restock_requests");
+      const snapshot = await getDocs(requestsRef);
+      const count = snapshot.size + 1;
+      const requestId = `RR-${count.toString().padStart(3, '0')}`;
+
+      // Create request data
+      const requestData = {
+        requestId: requestId,
+        productId: item.id,
+        productName: item.name,
+        supplierId: item.supplierId || "",
+        category: item.category || "",
+        quantity: parseInt(formData.quantity),
+        stockCategory: formData.stockCategory,
+        urgency: formData.urgency,
+        shortNote: formData.shortNote,
+        description: formData.shortNote,
+        retailerId: auth.currentUser?.uid, // Get retailer ID from auth
+        states: "Under Review",
+        vendorSupplierId: "", // Will be assigned by supplier
+        
+        // Timestamps
+        dateOfRequest: new Date().toISOString(),
+        requested: {
+          date: new Date().toISOString(),
+          user: "current-user" // Placeholder for user ID
+        },
+        underReview: {
+          date: new Date().toISOString(),
+          user: "current-user" // Placeholder for user ID
+        },
+
+        // Additional fields
+        approved: null,
+        price: parseFloat(item.price) || 0,
+        currentStock: item.stock || 0,
+        image: item.image || null
+      };
+
+      // Add to restock_requests collection using setDoc
+      const docRef = doc(requestsRef, requestId);
+      await setDoc(docRef, requestData);
+
+      toast.success("Restock request created successfully!");
+      router.push("/retailer/orders");
+    } catch (err) {
+      console.error("Error creating request:", err);
+      setError(err.message || "Failed to create restock request");
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading item details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <p className="text-gray-600">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!item) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md w-full mx-auto p-6">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <ShoppingCart className="w-8 h-8 text-gray-400" />
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
-              No Item Selected
-            </h2>
-            <p className="text-gray-600 mb-6">
-              Please select an item from the catalog to place an order.
-            </p>
-            <button
-              onClick={() => router.push("/retailer/browse")}
-              className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm gap-2"
-            >
-              <Package className="w-4 h-4" />
-              Browse Items
-            </button>
-          </div>
+        <div className="text-center">
+          <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600">No item selected</p>
+          <button
+            onClick={() => router.push("/retailer/browse")}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          >
+            Browse Items
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top Bar */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push("/retailer/browse")}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5 text-gray-600" />
-              </button>
-              <div>
-                <h1 className="text-xl font-semibold text-gray-800">
-                  Stock Request
-                </h1>
-                <p className="text-sm text-gray-600">
-                  Submit a new stock request
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        {showConfirmation && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-            Stock request submitted successfully!
-          </div>
-        )}
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-2xl mx-auto">
+        {/* Back Button */}
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Back to Items
+        </button>
 
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <form onSubmit={handleSubmit} className="p-6 space-y-6">
-            {/* Selected Item Info */}
-            <div className="flex items-start gap-6 pb-6 border-b border-gray-100">
-              <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                {item.image ? (
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="w-full h-full object-cover rounded-lg"
-                  />
-                ) : (
-                  <Package className="w-12 h-12 text-gray-400" />
-                )}
-              </div>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-1">
-                  {item.name}
-                </h3>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Building className="w-4 h-4" />
-                  <span>{item.supplier}</span>
-                </div>
-                <p className="mt-2 text-sm text-gray-600">
-                  Current stock: {item.stock} units
+                <h1 className="text-xl font-semibold text-gray-800">
+                  Create Restock Request
+                </h1>
+                <p className="text-sm text-gray-600">
+                  Request restock for {item.name}
                 </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Package className="w-5 h-5 text-gray-400" />
+                  <span className="text-sm text-gray-600">
+                    Stock: {item.stock}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-gray-400" />
+                  <span className="text-sm text-gray-600">
+                    Price: ₹{item.price}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Form Fields */}
-            <div className="space-y-6">
-              {/* Product Name */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Product Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.productName}
-                  disabled
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg"
-                />
-              </div>
-
-              {/* Quantity */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Quantity *
-                </label>
-                <input
-                  type="number"
-                  name="quantity"
-                  required
-                  min="1"
-                  value={formData.quantity}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Stock Category */}
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Stock Category *
                 </label>
                 <input
                   type="text"
-                  name="category"
-                  required
-                  value={formData.category}
+                  name="stockCategory"
+                  value={formData.stockCategory}
                   onChange={handleChange}
+                  required
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter stock category"
                 />
               </div>
 
-              {/* Urgency */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Urgency Level *
+                  Quantity *
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        quantity: Math.max(1, prev.quantity - 1),
+                      }))
+                    }
+                    className="px-3 py-2 bg-gray-100 text-gray-600 rounded-l-lg hover:bg-gray-200"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={formData.quantity}
+                    onChange={handleChange}
+                    min="1"
+                    required
+                    className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        quantity: prev.quantity + 1,
+                      }))
+                    }
+                    className="px-3 py-2 bg-gray-100 text-gray-600 rounded-r-lg hover:bg-gray-200"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Urgency *
                 </label>
                 <select
                   name="urgency"
                   value={formData.urgency}
                   onChange={handleChange}
+                  required
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="Normal">Normal</option>
                   <option value="Urgent">Urgent</option>
-                  <option value="Immediate">Immediate</option>
+                  <option value="Critical">Critical</option>
                 </select>
               </div>
 
-              {/* Note */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Additional Notes
+                  Short Note
                 </label>
                 <textarea
-                  name="note"
-                  value={formData.note}
+                  name="shortNote"
+                  value={formData.shortNote}
                   onChange={handleChange}
-                  rows={3}
+                  rows={4}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Add any additional details (optional)"
-                />
+                  placeholder="Any special requirements or notes..."
+                ></textarea>
               </div>
 
-              {/* Date */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date of Request
-                </label>
-                <input
-                  type="date"
-                  value={formData.dateRequested}
-                  disabled
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg"
-                />
+              <div className="flex items-center justify-end gap-4">
+                <button
+                  type="button"
+                  onClick={() => router.back()}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Create Request
+                </button>
               </div>
-            </div>
-
-            {/* Submit Buttons */}
-            <div className="flex gap-4 pt-6">
-              <button
-                type="submit"
-                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <Package className="w-4 h-4" />
-                Submit Request
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push("/retailer/browse")}
-                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
-              >
-                <X className="w-4 h-4" />
-                Cancel
-              </button>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       </div>
     </div>

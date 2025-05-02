@@ -10,8 +10,7 @@ export default function RetailerLayout({ children }) {
   const navigation = [
     { name: "Dashboard", href: "/retailer/dashboard" },
     { name: "Browse Suppliers", href: "/retailer/suppliers" },
-    { name: "Place Order", href: "/retailer/orders/place" },
-    { name: "Order History", href: "/retailer/orders/history" },
+    { name: "Orders", href: "/retailer/orders" },
     { name: "Inventory", href: "/retailer/inventory" },
   ];
 
