@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Package,
@@ -12,6 +12,16 @@ import {
   Trash2,
   ArrowUpDown,
 } from "lucide-react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
 
 export default function ItemsPage() {
   const router = useRouter();
@@ -19,31 +29,8 @@ export default function ItemsPage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortBy, setSortBy] = useState("name");
   const [sortOrder, setSortOrder] = useState("asc");
-
-  // Placeholder data - in a real app this would come from an API
-  const items = [
-    {
-      id: 1,
-      name: "Premium Laptop",
-      sku: "LAP-001",
-      category: "Electronics",
-      price: 1299.99,
-      stock: 50,
-      minStock: 10,
-      status: "In Stock",
-    },
-    {
-      id: 2,
-      name: "Wireless Mouse",
-      sku: "MOU-001",
-      category: "Accessories",
-      price: 29.99,
-      stock: 5,
-      minStock: 20,
-      status: "Low Stock",
-    },
-    // Add more items as needed
-  ];
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const categories = [
     "Electronics",
@@ -51,6 +38,26 @@ export default function ItemsPage() {
     "Office Supplies",
     "Accessories",
   ];
+
+  useEffect(() => {
+    fetchItems();
+  }, []);
+
+  const fetchItems = async () => {
+    try {
+      const itemsCollection = collection(db, "items");
+      const querySnapshot = await getDocs(itemsCollection);
+      const itemsData = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setItems(itemsData);
+    } catch (error) {
+      console.error("Error fetching items:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSort = (field) => {
     if (sortBy === field) {
@@ -83,6 +90,39 @@ export default function ItemsPage() {
         return "bg-gray-50 text-gray-700 border-gray-200";
     }
   };
+
+  const filteredItems = items.filter((item) => {
+    const matchesSearch =
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.itemId.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory =
+      selectedCategory === "all" || item.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  const handleDelete = async (itemId) => {
+    if (window.confirm("Are you sure you want to delete this item?")) {
+      try {
+        await deleteDoc(doc(db, "items", itemId));
+        // Refresh the items list
+        fetchItems();
+      } catch (error) {
+        console.error("Error deleting item:", error);
+        alert("Failed to delete item. Please try again.");
+      }
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading items...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -157,14 +197,12 @@ export default function ItemsPage() {
                       {getSortIcon("name")}
                     </button>
                   </th>
-                  <th className="px-6 py-4 bg-gray-50 text-left">
-                    <button
-                      onClick={() => handleSort("sku")}
-                      className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900"
-                    >
-                      SKU
-                      {getSortIcon("sku")}
-                    </button>
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                    onClick={() => handleSort("itemId")}
+                  >
+                    Item ID
+                    {getSortIcon("itemId")}
                   </th>
                   <th className="px-6 py-4 bg-gray-50 text-left">
                     <button
@@ -206,7 +244,7 @@ export default function ItemsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {items.map((item) => (
+                {filteredItems.map((item) => (
                   <tr
                     key={item.id}
                     className="hover:bg-gray-50 transition-colors"
@@ -227,7 +265,9 @@ export default function ItemsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-gray-600">{item.sku}</span>
+                      <span className="text-sm text-gray-600">
+                        {item.itemId}
+                      </span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm text-gray-600">
@@ -271,7 +311,10 @@ export default function ItemsPage() {
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -282,7 +325,7 @@ export default function ItemsPage() {
             </table>
           </div>
 
-          {items.length === 0 && (
+          {filteredItems.length === 0 && (
             <div className="text-center py-12">
               <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">

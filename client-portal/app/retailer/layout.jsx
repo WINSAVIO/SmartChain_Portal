@@ -2,6 +2,7 @@
 import React from "react";
 import { usePathname } from "next/navigation";
 import { Store, ShoppingCart, BarChart3, Settings, LogOut } from "lucide-react";
+import { Toaster } from "sonner";
 
 export default function RetailerLayout({ children }) {
   const pathname = usePathname();
@@ -35,7 +36,7 @@ export default function RetailerLayout({ children }) {
       <div className="fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200">
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-center h-16 border-b border-gray-200">
-            <h1 className="text-xl font-semibold text-gray-800">SmartChain</h1>
+            <h1 className="text-xl font-semibold text-gray-800">Retailer</h1>
           </div>
 
           <nav className="flex-1 p-4 space-y-1">
@@ -79,6 +80,9 @@ export default function RetailerLayout({ children }) {
 
       {/* Main Content */}
       <div className="pl-64">{children}</div>
+
+      {/* Toast Notifications */}
+      <Toaster position="top-right" />
     </div>
   );
 }

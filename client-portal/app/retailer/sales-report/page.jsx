@@ -10,16 +10,29 @@ import {
   X,
 } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
+  where,
+} from "firebase/firestore";
 
 export default function SalesReport() {
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
-    id: "",
-    name: "",
-    quantitySold: "",
-    saleDate: new Date().toISOString().split("T")[0],
+    itemId: "",
+    categoryOfItem: "",
+    date: new Date().toISOString().split("T")[0],
+    noOfUnitsSold: "",
+    reportId: "",
+    retailerId: "",
+    sales: "",
+    season: "",
   });
   const [dateRange, setDateRange] = useState({
     from: "",
@@ -29,38 +42,51 @@ export default function SalesReport() {
     key: null,
     direction: "ascending",
   });
+  const [salesData, setSalesData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Sample data - replace with actual data from your backend
-  const [salesData, setSalesData] = useState([
-    {
-      id: "001",
-      name: "Premium Laptop",
-      quantitySold: 50,
-      saleDate: "2024-03-25",
-    },
-    {
-      id: "002",
-      name: "Wireless Mouse",
-      quantitySold: 30,
-      saleDate: "2024-03-24",
-    },
-    {
-      id: "003",
-      name: "USB-C Hub",
-      quantitySold: 75,
-      saleDate: "2024-03-23",
-    },
-    {
-      id: "004",
-      name: "Mechanical Keyboard",
-      quantitySold: 25,
-      saleDate: "2024-03-22",
-    },
-  ]);
+  // Predefined seasons
+  const seasons = ["Spring", "Summer", "Fall", "Winter"];
 
   useEffect(() => {
     setMounted(true);
+    fetchSalesData();
+    const retailerId =
+      localStorage.getItem("retailerId") ||
+      sessionStorage.getItem("retailerId");
+    if (retailerId) {
+      setFormData((prev) => ({ ...prev, retailerId }));
+    }
   }, []);
+
+  const fetchSalesData = async () => {
+    try {
+      setLoading(true);
+      const salesRef = collection(db, "sales_report");
+      let q = query(salesRef, orderBy("date", "desc"));
+
+      // Apply date range filter if specified
+      if (dateRange.from && dateRange.to) {
+        q = query(
+          q,
+          where("date", ">=", dateRange.from),
+          where("date", "<=", dateRange.to)
+        );
+      }
+
+      const querySnapshot = await getDocs(q);
+      const data = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setSalesData(data);
+    } catch (error) {
+      console.error("Error fetching sales data:", error);
+      toast.error("Failed to load sales data");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSort = (key) => {
     let direction = "ascending";
@@ -80,16 +106,30 @@ export default function SalesReport() {
   const filteredData = salesData.filter(
     (item) =>
       item.id.toLowerCase().includes(search.toLowerCase()) ||
-      item.name.toLowerCase().includes(search.toLowerCase())
+      item.itemId.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleDownload = () => {
     // Convert data to CSV
-    const headers = ["Item ID", "Item Name", "Quantity Sold", "Sale Date"];
+    const headers = [
+      "Item ID",
+      "Category",
+      "Units Sold",
+      "Sales",
+      "Date",
+      "Season",
+    ];
     const csvData = [
       headers.join(","),
       ...filteredData.map((item) =>
-        [item.id, item.name, item.quantitySold, item.saleDate].join(",")
+        [
+          item.itemId,
+          item.categoryOfItem,
+          item.noOfUnitsSold,
+          item.sales,
+          item.date,
+          item.season,
+        ].join(",")
       ),
     ].join("\n");
 
@@ -105,40 +145,69 @@ export default function SalesReport() {
     document.body.removeChild(a);
   };
 
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
 
     // Validation
     if (
-      !formData.id ||
-      !formData.name ||
-      !formData.quantitySold ||
-      !formData.saleDate
+      !formData.itemId ||
+      !formData.categoryOfItem ||
+      !formData.date ||
+      !formData.noOfUnitsSold ||
+      !formData.sales ||
+      !formData.season
     ) {
       toast.error("Please fill in all fields");
       return;
     }
 
-    if (isNaN(formData.quantitySold) || parseInt(formData.quantitySold) <= 0) {
-      toast.error("Please enter a valid quantity");
+    if (
+      isNaN(formData.noOfUnitsSold) ||
+      parseInt(formData.noOfUnitsSold) <= 0
+    ) {
+      toast.error("Please enter a valid number of units");
       return;
     }
 
-    // Add new sale to the data
-    const newSale = {
-      ...formData,
-      quantitySold: parseInt(formData.quantitySold),
-    };
+    if (isNaN(formData.sales) || parseFloat(formData.sales) <= 0) {
+      toast.error("Please enter a valid sales amount");
+      return;
+    }
 
-    setSalesData([newSale, ...salesData]);
-    setIsModalOpen(false);
-    setFormData({
-      id: "",
-      name: "",
-      quantitySold: "",
-      saleDate: new Date().toISOString().split("T")[0],
-    });
-    toast.success("Sale added successfully!");
+    try {
+      const salesRef = collection(db, "sales_report");
+
+      // Get all existing sales reports to determine the next report ID
+      const reportsSnapshot = await getDocs(salesRef);
+      const reportCount = reportsSnapshot.size + 1;
+      const reportId = `RE-${reportCount.toString().padStart(3, "0")}`;
+
+      const newSale = {
+        ...formData,
+        reportId,
+        noOfUnitsSold: parseInt(formData.noOfUnitsSold),
+        sales: parseFloat(formData.sales),
+        createdAt: new Date().toISOString(),
+      };
+
+      await addDoc(salesRef, newSale);
+      setIsModalOpen(false);
+      setFormData({
+        itemId: "",
+        categoryOfItem: "",
+        date: new Date().toISOString().split("T")[0],
+        noOfUnitsSold: "",
+        reportId: "",
+        retailerId: formData.retailerId,
+        sales: "",
+        season: "",
+      });
+      toast.success("Sale added successfully!");
+      fetchSalesData();
+    } catch (error) {
+      console.error("Error adding sale:", error);
+      toast.error("Failed to add sale");
+    }
   };
 
   const formatDate = (dateString) => {
@@ -241,55 +310,92 @@ export default function SalesReport() {
                 </label>
                 <input
                   type="text"
-                  value={formData.id}
+                  value={formData.itemId}
                   onChange={(e) =>
-                    setFormData({ ...formData, id: e.target.value })
+                    setFormData({ ...formData, itemId: e.target.value })
                   }
                   className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter item ID"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Item Name
+                  Category
                 </label>
                 <input
                   type="text"
-                  value={formData.name}
+                  value={formData.categoryOfItem}
                   onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
+                    setFormData({ ...formData, categoryOfItem: e.target.value })
                   }
                   className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter item name"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantity Sold
-                </label>
-                <input
-                  type="number"
-                  value={formData.quantitySold}
-                  onChange={(e) =>
-                    setFormData({ ...formData, quantitySold: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter quantity"
-                  min="1"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Sale Date
+                  Date
                 </label>
                 <input
                   type="date"
-                  value={formData.saleDate}
+                  value={formData.date}
                   onChange={(e) =>
-                    setFormData({ ...formData, saleDate: e.target.value })
+                    setFormData({ ...formData, date: e.target.value })
                   }
                   className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Number of Units Sold
+                </label>
+                <input
+                  type="number"
+                  value={formData.noOfUnitsSold}
+                  onChange={(e) =>
+                    setFormData({ ...formData, noOfUnitsSold: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="1"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Sales Amount
+                </label>
+                <input
+                  type="number"
+                  value={formData.sales}
+                  onChange={(e) =>
+                    setFormData({ ...formData, sales: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="0.01"
+                  step="0.01"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Season
+                </label>
+                <select
+                  value={formData.season}
+                  onChange={(e) =>
+                    setFormData({ ...formData, season: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select a season</option>
+                  {seasons.map((season) => (
+                    <option key={season} value={season}>
+                      {season}
+                    </option>
+                  ))}
+                </select>
               </div>
               <button
                 type="submit"
@@ -308,37 +414,26 @@ export default function SalesReport() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th
-                  onClick={() => handleSort("id")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Item ID{" "}
-                  {sortConfig.key === "id" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Report ID
                 </th>
-                <th
-                  onClick={() => handleSort("name")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Item Name{" "}
-                  {sortConfig.key === "name" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Item ID
                 </th>
-                <th
-                  onClick={() => handleSort("quantitySold")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Quantity Sold{" "}
-                  {sortConfig.key === "quantitySold" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Category
                 </th>
-                <th
-                  onClick={() => handleSort("saleDate")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Sale Date{" "}
-                  {sortConfig.key === "saleDate" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Units Sold
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Sales
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Date
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Season
                 </th>
               </tr>
             </thead>
@@ -350,21 +445,34 @@ export default function SalesReport() {
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-blue-600">
-                      {item.id}
+                      {item.reportId}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{item.name}</div>
+                    <div className="text-sm text-gray-900">{item.itemId}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {item.categoryOfItem}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
-                      {item.quantitySold}
+                      {item.noOfUnitsSold}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">
+                      {item.sales.toFixed(2)}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-600">
-                      {formatDate(item.saleDate)}
+                      {formatDate(item.date)}
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-600">{item.season}</div>
                   </td>
                 </tr>
               ))}
