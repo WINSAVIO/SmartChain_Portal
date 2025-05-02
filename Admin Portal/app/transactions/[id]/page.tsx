@@ -1,183 +1,104 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
-import { DashboardLayout } from "@/components/dashboard-layout"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, CheckCircle, Clock, XCircle, TruckIcon } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { DashboardLayout } from "@/components/dashboard-layout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { ArrowLeft, CheckCircle, Clock, XCircle, TruckIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock transaction data
-const transactionData = {
-  "TR-1234": {
-    id: "TR-1234",
-    product: "Office Chairs",
-    quantity: 50,
-    status: "Pending",
-    requestedBy: "John Doe",
-    date: "2023-03-15",
-    vendor: "Office Supplies Co.",
-    severity: "Urgent",
-    notes: "Urgent request for new office setup",
-    timeline: [
-      { status: "Requested", date: "2023-03-15T09:00:00", user: "John Doe" },
-      { status: "Under Review", date: "2023-03-16T11:30:00", user: "Admin" },
-    ],
-  },
-  "TR-1235": {
-    id: "TR-1235",
-    product: "Desk Lamps",
-    quantity: 100,
-    status: "Approved",
-    requestedBy: "Jane Smith",
-    date: "2023-03-14",
-    vendor: "Lighting Solutions Inc.",
-    severity: "Normal",
-    notes: "Standard order for new hires",
-    timeline: [
-      { status: "Requested", date: "2023-03-14T10:15:00", user: "Jane Smith" },
-      { status: "Under Review", date: "2023-03-14T14:20:00", user: "Admin" },
-      { status: "Approved", date: "2023-03-15T09:45:00", user: "Manager" },
-    ],
-  },
-  "TR-1236": {
-    id: "TR-1236",
-    product: "Monitors",
-    quantity: 25,
-    status: "Shipped",
-    requestedBy: "Mike Johnson",
-    date: "2023-03-12",
-    vendor: "Tech Supplies Ltd.",
-    severity: "High",
-    notes: "High priority for development team",
-    timeline: [
-      { status: "Requested", date: "2023-03-12T08:30:00", user: "Mike Johnson" },
-      { status: "Under Review", date: "2023-03-12T10:45:00", user: "Admin" },
-      { status: "Approved", date: "2023-03-13T09:15:00", user: "Manager" },
-      { status: "Shipped", date: "2023-03-14T14:00:00", user: "Vendor" },
-    ],
-  },
-  "TR-1237": {
-    id: "TR-1237",
-    product: "Keyboards",
-    quantity: 75,
-    status: "Delivered",
-    requestedBy: "Sarah Williams",
-    date: "2023-03-10",
-    vendor: "Tech Supplies Ltd.",
-    severity: "Normal",
-    notes: "Regular order for IT department",
-    timeline: [
-      { status: "Requested", date: "2023-03-10T08:30:00", user: "Sarah Williams" },
-      { status: "Under Review", date: "2023-03-10T10:45:00", user: "Admin" },
-      { status: "Approved", date: "2023-03-11T09:15:00", user: "Manager" },
-      { status: "Shipped", date: "2023-03-12T14:00:00", user: "Vendor" },
-      { status: "Delivered", date: "2023-03-14T11:30:00", user: "Logistics" },
-    ],
-  },
-  "TR-1238": {
-    id: "TR-1238",
-    product: "Desk Organizers",
-    quantity: 200,
-    status: "Rejected",
-    requestedBy: "David Brown",
-    date: "2023-03-08",
-    vendor: "Office Supplies Co.",
-    severity: "Low",
-    notes: "Budget constraints",
-    timeline: [
-      { status: "Requested", date: "2023-03-08T13:45:00", user: "David Brown" },
-      { status: 'Under Review", date:  date: "2023-03-08T13:45:00', user: "David Brown" },
-      { status: "Under Review", date: "2023-03-09T10:30:00", user: "Admin" },
-      { status: "Rejected", date: "2023-03-10T14:15:00", user: "Manager" },
-    ],
-  },
-  "TR-1239": {
-    id: "TR-1239",
-    product: "Whiteboards",
-    quantity: 10,
-    status: "Pending",
-    requestedBy: "Emily Davis",
-    date: "2023-03-07",
-    vendor: "Office Supplies Co.",
-    severity: "Urgent",
-    notes: "Needed for upcoming planning sessions",
-    timeline: [
-      { status: "Requested", date: "2023-03-07T11:20:00", user: "Emily Davis" },
-      { status: "Under Review", date: "2023-03-08T09:45:00", user: "Admin" },
-    ],
-  },
-  "TR-1240": {
-    id: "TR-1240",
-    product: "Filing Cabinets",
-    quantity: 15,
-    status: "Approved",
-    requestedBy: "Robert Wilson",
-    date: "2023-03-05",
-    vendor: "Office Supplies Co.",
-    severity: "Normal",
-    notes: "For document storage reorganization",
-    timeline: [
-      { status: "Requested", date: "2023-03-05T14:30:00", user: "Robert Wilson" },
-      { status: "Under Review", date: "2023-03-06T10:15:00", user: "Admin" },
-      { status: "Approved", date: "2023-03-07T11:45:00", user: "Manager" },
-    ],
-  },
+interface RestockRequest {
+  id: string;
+  states: string;
+  dateOfRequest: string;
+  productId: string;
+  productName: string;
+  vendorSupplierId: string;
+  quantity: number;
+  urgency: string;
+  shortNote: string;
+  stockCategory: string;
+  description: string;
+  requestedBy?: string;
+  requested?: { date: string; user: string };
+  underReview?: { date: string; user: string };
+  approved?: { date: string; user: string };
 }
 
-// Status icon component
-function StatusIcon({ status }: { status: string }) {
-  switch (status.toLowerCase()) {
-    case "requested":
-    case "under review":
-    case "pending":
-      return <Clock className="h-5 w-5 text-yellow-500" />
-    case "approved":
-      return <CheckCircle className="h-5 w-5 text-green-500" />
-    case "rejected":
-      return <XCircle className="h-5 w-5 text-red-500" />
-    case "shipped":
-    case "delivered":
-      return <TruckIcon className="h-5 w-5 text-blue-500" />
-    default:
-      return <Clock className="h-5 w-5 text-gray-500" />
-  }
+interface AuthUser {
+  getIdToken: () => Promise<string>;
+  email?: string;
+  name?: string;
+  uid?: string;
 }
 
 export default function TransactionDetailsPage() {
-  const router = useRouter()
-  const { id } = useParams()
-  const [transaction, setTransaction] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const router = useRouter();
+  const { id } = useParams();
+  const { user } = useAuth() as { user: AuthUser | null };
+  const { toast } = useToast();
+  const [transaction, setTransaction] = useState<RestockRequest | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate API fetch
-    const fetchTransaction = async () => {
-      setLoading(true)
-      try {
-        // In a real app, this would be an API call
-        await new Promise((resolve) => setTimeout(resolve, 500))
+    fetchData();
+  }, [id, user]);
 
-        const transactionId = Array.isArray(id) ? id[0] : id
-        const data = transactionData[transactionId as keyof typeof transactionData]
+  const fetchData = async () => {
+    if (!user || !id) return;
 
-        if (data) {
-          setTransaction(data)
-        }
-      } catch (error) {
-        console.error("Error fetching transaction:", error)
-      } finally {
-        setLoading(false)
-      }
+    setLoading(true);
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch(`http://localhost:4000/api/restock-requests/${id}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch restock request");
+      const data = await response.json();
+      setTransaction(data);
+    } catch (error) {
+      console.error("Error fetching restock request:", error);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    if (id) {
-      fetchTransaction()
+  const updateState = async (state: string) => {
+    if (!user || !transaction) return;
+
+    const username = user.email?.split("@")[0] || user.name || user.uid || "Unknown User";
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch(`http://localhost:4000/api/restock-requests/${id}/state`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ state, user: username }),
+      });
+
+      if (!response.ok) throw new Error("Failed to update state");
+      await fetchData(); // Refresh data after update
+      toast({
+        title: "Success",
+        description: `Request marked as ${state} successfully.`,
+      });
+    } catch (error) {
+      console.error("Error updating state:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update request state.",
+        variant: "destructive",
+      });
     }
-  }, [id])
+  };
 
   if (loading) {
     return (
@@ -186,7 +107,7 @@ export default function TransactionDetailsPage() {
           <p>Loading transaction details...</p>
         </div>
       </DashboardLayout>
-    )
+    );
   }
 
   if (!transaction) {
@@ -200,7 +121,26 @@ export default function TransactionDetailsPage() {
           </Button>
         </div>
       </DashboardLayout>
-    )
+    );
+  }
+
+  // Status icon component
+  function StatusIcon({ status }: { status: string }) {
+    switch (status.toLowerCase()) {
+      case "requested":
+      case "under review":
+      case "pending":
+        return <Clock className="h-5 w-5 text-yellow-500" />;
+      case "approved":
+        return <CheckCircle className="h-5 w-5 text-green-500" />;
+      case "rejected":
+        return <XCircle className="h-5 w-5 text-red-500" />;
+      case "shipped":
+      case "delivered":
+        return <TruckIcon className="h-5 w-5 text-blue-500" />;
+      default:
+        return <Clock className="h-5 w-5 text-gray-500" />;
+    }
   }
 
   return (
@@ -216,14 +156,15 @@ export default function TransactionDetailsPage() {
             variant="outline"
             className={cn(
               "ml-auto font-medium text-sm px-3 py-1",
-              transaction.status.toLowerCase() === "approved" && "bg-green-100 text-green-800",
-              transaction.status.toLowerCase() === "pending" && "bg-yellow-100 text-yellow-800",
-              transaction.status.toLowerCase() === "rejected" && "bg-red-100 text-red-800",
-              transaction.status.toLowerCase() === "shipped" && "bg-blue-100 text-blue-800",
-              transaction.status.toLowerCase() === "delivered" && "bg-purple-100 text-purple-800",
+              transaction.states.toLowerCase() === "approved" && "bg-green-100 text-green-800",
+              (transaction.states.toLowerCase() === "pending" || transaction.states.toLowerCase() === "under review") &&
+                "bg-yellow-100 text-yellow-800",
+              transaction.states.toLowerCase() === "rejected" && "bg-red-100 text-red-800",
+              transaction.states.toLowerCase() === "shipped" && "bg-blue-100 text-blue-800",
+              transaction.states.toLowerCase() === "delivered" && "bg-purple-100 text-purple-800",
             )}
           >
-            {transaction.status}
+            {transaction.states}
           </Badge>
         </div>
 
@@ -236,7 +177,7 @@ export default function TransactionDetailsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Product</p>
-                <p className="font-medium">{transaction.product}</p>
+                <p className="font-medium">{transaction.productName}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Quantity</p>
@@ -244,61 +185,113 @@ export default function TransactionDetailsPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Requested By</p>
-                <p className="font-medium">{transaction.requestedBy}</p>
+                <p className="font-medium">{transaction.requestedBy || "Unknown"}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Date</p>
-                <p className="font-medium">{transaction.date}</p>
+                <p className="font-medium">{new Date(transaction.dateOfRequest).toLocaleDateString()}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Vendor</p>
-                <p className="font-medium">{transaction.vendor}</p>
+                <p className="text-sm font-medium text-muted-foreground">Vendor/Supplier</p>
+                <p className="font-medium">{transaction.vendorSupplierId}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Severity</p>
-                <p className="font-medium">{transaction.severity}</p>
+                <p className="text-sm font-medium text-muted-foreground">Urgency</p>
+                <p className="font-medium">{transaction.urgency}</p>
               </div>
             </div>
 
             <Separator />
 
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Notes</p>
-              <p className="text-sm">{transaction.notes}</p>
+              <p className="text-sm font-medium text-muted-foreground">Short Note</p>
+              <p className="text-sm">{transaction.shortNote}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Description</p>
+              <p className="text-sm">{transaction.description}</p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Timeline */}
+        {/* Request Timeline */}
         <Card>
           <CardHeader>
             <CardTitle>Request Timeline</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="relative">
-              {transaction.timeline.map((event: any, index: number) => (
-                <div key={index} className="mb-8 flex gap-4">
-                  <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                    <StatusIcon status={event.status} />
-                    {index < transaction.timeline.length - 1 && (
-                      <div className="absolute top-10 left-1/2 h-full w-px -translate-x-1/2 bg-border" />
-                    )}
-                  </div>
-                  <div className="flex flex-col">
-                    <p className="font-medium">{event.status}</p>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm text-muted-foreground">{new Date(event.date).toLocaleString()}</p>
-                      <span className="text-sm text-muted-foreground">•</span>
-                      <p className="text-sm text-muted-foreground">{event.user}</p>
-                    </div>
+              <div className="mb-8 flex gap-4">
+                <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                  <StatusIcon status="requested" />
+                  {(transaction.underReview || transaction.approved) && (
+                    <div className="absolute top-10 left-1/2 h-full w-px -translate-x-1/2 bg-border" />
+                  )}
+                </div>
+                <div className="flex flex-col">
+                  <p className="font-medium">Requested</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm text-muted-foreground">
+                      {transaction.requested
+                        ? new Date(transaction.requested.date).toLocaleString()
+                        : "Not yet requested"}
+                    </p>
+                    <span className="text-sm text-muted-foreground">•</span>
+                    <p className="text-sm text-muted-foreground">{transaction.requested?.user || "Unknown"}</p>
                   </div>
                 </div>
-              ))}
+              </div>
+              <div className="mb-8 flex gap-4">
+                <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                  <StatusIcon status="under review" />
+                  {transaction.approved && (
+                    <div className="absolute top-10 left-1/2 h-full w-px -translate-x-1/2 bg-border" />
+                  )}
+                </div>
+                <div className="flex flex-col">
+                  <p className="font-medium">Under Review</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm text-muted-foreground">
+                      {transaction.underReview
+                        ? new Date(transaction.underReview.date).toLocaleString()
+                        : "Not yet reviewed"}
+                    </p>
+                    <span className="text-sm text-muted-foreground">•</span>
+                    <p className="text-sm text-muted-foreground">{transaction.underReview?.user || "Unknown"}</p>
+                  </div>
+                  {!transaction.underReview && (
+                    <Button variant="outline" size="sm" onClick={() => updateState("underReview")} className="mt-2">
+                      Mark Under Review
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="mb-8 flex gap-4">
+                <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                  <StatusIcon status="approved" />
+                </div>
+                <div className="flex flex-col">
+                  <p className="font-medium">Approved</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm text-muted-foreground">
+                      {transaction.approved
+                        ? new Date(transaction.approved.date).toLocaleString()
+                        : "Not yet approved"}
+                    </p>
+                    <span className="text-sm text-muted-foreground">•</span>
+                    <p className="text-sm text-muted-foreground">{transaction.approved?.user || "Unknown"}</p>
+                  </div>
+                  {!transaction.approved && (
+                    <Button variant="outline" size="sm" onClick={() => updateState("approved")} className="mt-2">
+                      Mark Approved
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
     </DashboardLayout>
-  )
+  );
 }
-
