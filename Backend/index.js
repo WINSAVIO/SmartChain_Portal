@@ -2,6 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
 const { ethers } = require("ethers");
+const { GoogleAuth } = require('google-auth-library'); // Added for Google Cloud authentication
+const axios = require('axios'); // Added for HTTP requests to Vertex AI
 require("dotenv").config();
 
 // Initialize Firebase Admin SDK with Firestore
@@ -18,10 +20,8 @@ app.use(express.json());
 
 // Connect to Hardhat Network for blockchain interaction
 const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
-//const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider); // Add PRIVATE_KEY to .env
-// Fallback: Uncomment and replace with your private key if .env fails
 const wallet = new ethers.Wallet("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", provider);
-const contractAddress = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"; // Updated with the new deployed address
+const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const SupplyChainABI = [
   {
     "inputs": [
@@ -96,6 +96,16 @@ const SupplyChainABI = [
 ];
 const supplyChain = new ethers.Contract(contractAddress, SupplyChainABI, wallet);
 
+// Initialize GoogleAuth for Vertex AI
+const auth = new GoogleAuth({
+  keyFile: 'smartchain-predictor-key.json', // Ensure this file is in your project directory
+  scopes: ['https://www.googleapis.com/auth/cloud-platform']
+});
+
+// Vertex AI endpoint URLs
+const DAILY_ENDPOINT = 'https://asia-south1-aiplatform.googleapis.com/v1/projects/smartchain-7219e/locations/asia-south1/endpoints/1226821880132927488:predict';
+const WEEKLY_ENDPOINT = 'https://asia-south1-aiplatform.googleapis.com/v1/projects/smartchain-7219e/locations/asia-south1/endpoints/4272381128142225408:predict';
+
 // Middleware to verify Firebase ID token
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -106,13 +116,69 @@ const authenticateToken = async (req, res, next) => {
   const idToken = authHeader.split("Bearer ")[1];
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = decodedToken; // Store decoded token with email, uid, etc.
+    req.user = decodedToken;
     next();
   } catch (error) {
     console.error("Token verification error:", error);
     return res.status(401).json({ message: "Unauthorized: Invalid token" });
   }
 };
+
+// 🟣 Predict endpoint (POST) for Vertex AI
+app.post('/api/predict', authenticateToken, async (req, res) => {
+  try {
+    const { instances, model_type } = req.body;
+
+    if (!instances || !model_type) {
+      return res.status(400).json({ message: "Missing required fields: instances and model_type" });
+    }
+
+    if (!Array.isArray(instances) || instances.length === 0) {
+      return res.status(400).json({ message: "Instances must be a non-empty array" });
+    }
+
+    const endpoint = model_type === 'daily' ? DAILY_ENDPOINT : WEEKLY_ENDPOINT;
+    if (model_type !== 'daily' && model_type !== 'weekly') {
+      return res.status(400).json({ message: "model_type must be 'daily' or 'weekly'" });
+    }
+
+    // Validate instance shape (7 timesteps, 12 features)
+    for (const instance of instances) {
+      if (!Array.isArray(instance) || instance.length !== 7) {
+        return res.status(400).json({ message: "Each instance must have 7 timesteps" });
+      }
+      for (const timestep of instance) {
+        if (!Array.isArray(timestep) || timestep.length !== 12) {
+          return res.status(400).json({ message: "Each timestep must have 12 features" });
+        }
+        if (!timestep.every(val => typeof val === 'number')) {
+          return res.status(400).json({ message: "All features must be numbers" });
+        }
+      }
+    }
+
+    // Get access token for Vertex AI
+    const client = await auth.getClient();
+    const accessToken = await client.getAccessToken();
+
+    // Send request to Vertex AI
+    const response = await axios.post(
+      endpoint,
+      { instances },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken.token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    res.status(200).json(response.data);
+  } catch (error) {
+    console.error("Error making prediction:", error.response ? error.response.data : error.message);
+    res.status(500).json({ message: "Failed to make prediction", error: error.message });
+  }
+});
 
 // Map user (create or update user data in Firestore and assign retailer ID)
 app.post("/api/map-user", authenticateToken, async (req, res) => {
@@ -149,7 +215,6 @@ app.post("/api/map-user", authenticateToken, async (req, res) => {
       address: address || "",
       taxId: taxId || "",
     }, { merge: true });
-
 
     console.log("User data and retailer ID saved to Firestore:", { uid, email, companyName, address, taxId, retailerId });
 
@@ -189,9 +254,6 @@ app.get("/api/user-profile", authenticateToken, async (req, res) => {
           taxId: "",
         }
       );
-
-   // res.status(200).json(data.profile || { email: req.user.email || "", companyName: "", address: "", taxId: "" });
-
   } catch (error) {
     console.error("Error fetching user profile from Firestore:", error);
     res.status(500).json({ message: "Failed to fetch user profile" });
@@ -389,7 +451,7 @@ app.post("/api/inventory-items", authenticateToken, async (req, res) => {
 app.get("/api/sales-reports", authenticateToken, async (req, res) => {
   try {
     const { period = "week", startDate, endDate } = req.query;
-    const currentDate = new Date("2025-04-11"); // Current date
+    const currentDate = new Date("2025-04-11");
     let start, end;
 
     switch (period) {
@@ -401,10 +463,10 @@ app.get("/api/sales-reports", authenticateToken, async (req, res) => {
         break;
       case "week":
         start = new Date(currentDate);
-        start.setDate(currentDate.getDate() - currentDate.getDay()); // Start of the week (Sunday)
+        start.setDate(currentDate.getDate() - currentDate.getDay());
         start.setHours(0, 0, 0, 0);
         end = new Date(start);
-        end.setDate(start.getDate() + 6); // End of the week (Saturday)
+        end.setDate(start.getDate() + 6);
         end.setHours(23, 59, 59, 999);
         break;
       case "month":
@@ -728,7 +790,6 @@ const transactionsRef = db.collection("transactions");
 app.post("/api/transactions", authenticateToken, async (req, res) => {
   try {
     const { receiverId, itemId, itemName, quantity, category, status } = req.body;
-    // Get all current transactions to determine next orderId
     const txs = await supplyChain.getUserTransactions();
     const maxOrderId = txs.length > 0 ? Math.max(...txs.map(tx => Number(tx.orderId))) : 0;
     const orderId = maxOrderId + 1;
@@ -736,13 +797,10 @@ app.post("/api/transactions", authenticateToken, async (req, res) => {
     const receiverIdFixed = "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65";
     const transactionId = `T-${String(orderId).padStart(3, '0')}`;
     const transactionDate = new Date().toISOString();
-    // Map status string to index
     const statusMap = { "Confirmed": 0, "Accepted by All": 1, "In Transit": 2, "Delivered": 3 };
     const statusIndex = statusMap[status] ?? 0;
-    // Send transaction data to blockchain
     const tx = await supplyChain.addTransaction(orderId, itemId, itemName, quantity, category);
     await tx.wait();
-    // If status is not Confirmed, update status
     if (statusIndex > 0) {
       const updateTx = await supplyChain.updateStatus(orderId, statusIndex);
       await updateTx.wait();

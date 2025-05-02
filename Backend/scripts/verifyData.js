@@ -5,7 +5,7 @@ async function main() {
   const SupplyChain = await hre.ethers.getContractFactory("SupplyChain");
   
   // Attach to the deployed contract
-  const contractAddress = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"; // Updated with the deployed contract address
+  const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Updated with the deployed contract address
   const supplyChain = SupplyChain.attach(contractAddress);
 
   // Get all transactions
