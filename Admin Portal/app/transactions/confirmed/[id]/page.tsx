@@ -10,90 +10,27 @@ import { Separator } from "@/components/ui/separator"
 import { ArrowLeft, CheckCircle, Clock, TruckIcon, Package } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-// Mock confirmed transaction data
-const confirmedTransactionData = {
-  "CT-1001": {
-    id: "CT-1001",
-    product: "Office Chairs",
-    quantity: 50,
-    status: "Confirmed",
-    vendor: "Office Supplies Co.",
-    date: "2023-03-18",
-    purchaseOrder: "PO-5678",
-    totalAmount: "$4,500.00",
-    estimatedDelivery: "2023-03-25",
-    shippingAddress: "123 Business Ave, Suite 100, Business City, BC 12345",
-    timeline: [{ status: "Confirmed", date: "2023-03-18T09:00:00", user: "Admin" }],
-  },
-  "CT-1002": {
-    id: "CT-1002",
-    product: "Desk Lamps",
-    quantity: 100,
-    status: "Accepted by All",
-    vendor: "Lighting Solutions Inc.",
-    date: "2023-03-17",
-    purchaseOrder: "PO-5679",
-    totalAmount: "$2,500.00",
-    estimatedDelivery: "2023-03-24",
-    shippingAddress: "123 Business Ave, Suite 100, Business City, BC 12345",
-    timeline: [
-      { status: "Confirmed", date: "2023-03-17T10:15:00", user: "Admin" },
-      { status: "Accepted by All", date: "2023-03-18T14:20:00", user: "Vendor" },
-    ],
-  },
-  "CT-1003": {
-    id: "CT-1003",
-    product: "Monitors",
-    quantity: 25,
-    status: "In Transit",
-    vendor: "Tech Supplies Ltd.",
-    date: "2023-03-16",
-    purchaseOrder: "PO-5680",
-    totalAmount: "$7,500.00",
-    estimatedDelivery: "2023-03-23",
-    shippingAddress: "123 Business Ave, Suite 100, Business City, BC 12345",
-    trackingNumber: "TRK123456789",
-    timeline: [
-      { status: "Confirmed", date: "2023-03-16T08:30:00", user: "Admin" },
-      { status: "Accepted by All", date: "2023-03-17T10:45:00", user: "Vendor" },
-      { status: "In Transit", date: "2023-03-18T09:15:00", user: "Shipping" },
-    ],
-  },
-  "CT-1004": {
-    id: "CT-1004",
-    product: "Keyboards",
-    quantity: 75,
-    status: "Delivered",
-    vendor: "Tech Supplies Ltd.",
-    date: "2023-03-15",
-    purchaseOrder: "PO-5681",
-    totalAmount: "$3,750.00",
-    deliveryDate: "2023-03-20",
-    shippingAddress: "123 Business Ave, Suite 100, Business City, BC 12345",
-    trackingNumber: "TRK987654321",
-    timeline: [
-      { status: "Confirmed", date: "2023-03-15T09:00:00", user: "Admin" },
-      { status: "Accepted by All", date: "2023-03-16T11:30:00", user: "Vendor" },
-      { status: "In Transit", date: "2023-03-17T14:45:00", user: "Shipping" },
-      { status: "Delivered", date: "2023-03-20T10:15:00", user: "Delivery" },
-    ],
-  },
-  "CT-1005": {
-    id: "CT-1005",
-    product: "Desk Organizers",
-    quantity: 200,
-    status: "Confirmed",
-    vendor: "Office Supplies Co.",
-    date: "2023-03-14",
-    purchaseOrder: "PO-5682",
-    totalAmount: "$1,800.00",
-    estimatedDelivery: "2023-03-21",
-    shippingAddress: "123 Business Ave, Suite 100, Business City, BC 12345",
-    timeline: [{ status: "Confirmed", date: "2023-03-14T15:20:00", user: "Admin" }],
-  },
+interface Transaction {
+  transactionId: string;
+  senderId: string;
+  receiverId: string;
+  itemId: string;
+  itemName: string;
+  quantity: string;
+  category: string;
+  transactionDate?: string;
+  confirmedByAllDate?: string;
+  inTransitDate?: string;
+  deliveredDate?: string;
+  status: string;
 }
 
-// Status icon component
+interface TimelineEvent {
+  status: string;
+  date?: string;
+  user: string;
+}
+
 function StatusIcon({ status }: { status: string }) {
   switch (status.toLowerCase()) {
     case "confirmed":
@@ -111,24 +48,20 @@ function StatusIcon({ status }: { status: string }) {
 
 export default function ConfirmedTransactionDetailsPage() {
   const router = useRouter()
-  const { id } = useParams()
-  const [transaction, setTransaction] = useState<any>(null)
+  const { id } = useParams<{ id: string }>()
+  const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Simulate API fetch
     const fetchTransaction = async () => {
       setLoading(true)
       try {
-        // In a real app, this would be an API call
-        await new Promise((resolve) => setTimeout(resolve, 500))
-
-        const transactionId = Array.isArray(id) ? id[0] : id
-        const data = confirmedTransactionData[transactionId as keyof typeof confirmedTransactionData]
-
-        if (data) {
-          setTransaction(data)
-        }
+        const token = localStorage.getItem("idToken")
+        const response = await fetch(`http://localhost:4000/api/transactions/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await response.json()
+        setTransaction(data)
       } catch (error) {
         console.error("Error fetching transaction:", error)
       } finally {
@@ -165,6 +98,13 @@ export default function ConfirmedTransactionDetailsPage() {
     )
   }
 
+  const timeline: TimelineEvent[] = [
+    { status: "Confirmed", date: transaction.transactionDate, user: "Admin" },
+    ...(transaction.confirmedByAllDate ? [{ status: "Accepted by All", date: transaction.confirmedByAllDate, user: "Vendor" }] : []),
+    ...(transaction.inTransitDate ? [{ status: "In Transit", date: transaction.inTransitDate, user: "Shipping" }] : []),
+    ...(transaction.deliveredDate ? [{ status: "Delivered", date: transaction.deliveredDate, user: "Delivery" }] : []),
+  ]
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -173,22 +113,21 @@ export default function ConfirmedTransactionDetailsPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <h1 className="text-3xl font-bold">Transaction {transaction.id}</h1>
+          <h1 className="text-3xl font-bold">Transaction {transaction.transactionId}</h1>
           <Badge
             variant="outline"
             className={cn(
               "ml-auto font-medium text-sm px-3 py-1",
-              transaction.status.toLowerCase() === "confirmed" && "bg-blue-100 text-blue-800",
-              transaction.status.toLowerCase() === "accepted by all" && "bg-indigo-100 text-indigo-800",
-              transaction.status.toLowerCase() === "in transit" && "bg-yellow-100 text-yellow-800",
-              transaction.status.toLowerCase() === "delivered" && "bg-green-100 text-green-800",
+              (transaction.status || "Confirmed").toLowerCase() === "confirmed" && "bg-blue-100 text-blue-800",
+              (transaction.status || "Confirmed").toLowerCase() === "accepted by all" && "bg-indigo-100 text-indigo-800",
+              (transaction.status || "Confirmed").toLowerCase() === "in transit" && "bg-yellow-100 text-yellow-800",
+              (transaction.status || "Confirmed").toLowerCase() === "delivered" && "bg-green-100 text-green-800",
             )}
           >
             {transaction.status}
           </Badge>
         </div>
 
-        {/* Transaction details */}
         <Card>
           <CardHeader>
             <CardTitle>Transaction Details</CardTitle>
@@ -197,70 +136,64 @@ export default function ConfirmedTransactionDetailsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Product</p>
-                <p className="font-medium">{transaction.product}</p>
+                <p className="font-medium">{transaction.itemName}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Quantity</p>
                 <p className="font-medium">{transaction.quantity}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Vendor</p>
-                <p className="font-medium">{transaction.vendor}</p>
+                <p className="text-sm font-medium text-muted-foreground">Category</p>
+                <p className="font-medium">{transaction.category}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Date</p>
-                <p className="font-medium">{transaction.date}</p>
+                <p className="text-sm font-medium text-muted-foreground">Transaction Date</p>
+                <p className="font-medium">{transaction.transactionDate?.split("T")[0]}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Purchase Order</p>
-                <p className="font-medium">{transaction.purchaseOrder}</p>
+                <p className="text-sm font-medium text-muted-foreground">Sender</p>
+                <p className="font-medium">{transaction.senderId}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Amount</p>
-                <p className="font-medium">{transaction.totalAmount}</p>
+                <p className="text-sm font-medium text-muted-foreground">Receiver</p>
+                <p className="font-medium">{transaction.receiverId}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  {transaction.deliveryDate ? "Delivery Date" : "Estimated Delivery"}
-                </p>
-                <p className="font-medium">{transaction.deliveryDate || transaction.estimatedDelivery}</p>
+                <p className="text-sm font-medium text-muted-foreground">Confirmed by All</p>
+                <p className="font-medium">{transaction.confirmedByAllDate?.split("T")[0] || "N/A"}</p>
               </div>
-              {transaction.trackingNumber && (
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Tracking Number</p>
-                  <p className="font-medium">{transaction.trackingNumber}</p>
-                </div>
-              )}
-            </div>
-
-            <Separator />
-
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Shipping Address</p>
-              <p className="text-sm">{transaction.shippingAddress}</p>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">In Transit</p>
+                <p className="font-medium">{transaction.inTransitDate?.split("T")[0] || "N/A"}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Delivered</p>
+                <p className="font-medium">{transaction.deliveredDate?.split("T")[0] || "N/A"}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Timeline */}
         <Card>
           <CardHeader>
             <CardTitle>Transaction Timeline</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="relative">
-              {transaction.timeline.map((event: any, index: number) => (
+              {timeline.map((event, index) => (
                 <div key={index} className="mb-8 flex gap-4">
                   <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-muted">
                     <StatusIcon status={event.status} />
-                    {index < transaction.timeline.length - 1 && (
+                    {index < timeline.length - 1 && (
                       <div className="absolute top-10 left-1/2 h-full w-px -translate-x-1/2 bg-border" />
                     )}
                   </div>
                   <div className="flex flex-col">
                     <p className="font-medium">{event.status}</p>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm text-muted-foreground">{new Date(event.date).toLocaleString()}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {event.date ? new Date(event.date).toLocaleString() : "N/A"}
+                      </p>
                       <span className="text-sm text-muted-foreground">•</span>
                       <p className="text-sm text-muted-foreground">{event.user}</p>
                     </div>
@@ -274,4 +207,3 @@ export default function ConfirmedTransactionDetailsPage() {
     </DashboardLayout>
   )
 }
-

@@ -1,9 +1,11 @@
 const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
-const serviceAccount = require("./publicAccountKey.json");
+const { ethers } = require("ethers");
+require("dotenv").config();
 
 // Initialize Firebase Admin SDK with Firestore
+const serviceAccount = require("./publicAccountKey.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -13,6 +15,86 @@ const db = admin.firestore(); // Initialize Firestore
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Connect to Hardhat Network for blockchain interaction
+const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+//const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider); // Add PRIVATE_KEY to .env
+// Fallback: Uncomment and replace with your private key if .env fails
+const wallet = new ethers.Wallet("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", provider);
+const contractAddress = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"; // Updated with the new deployed address
+const SupplyChainABI = [
+  {
+    "inputs": [
+      {"internalType": "uint256", "name": "_orderId", "type": "uint256"},
+      {"internalType": "string", "name": "_itemId", "type": "string"},
+      {"internalType": "string", "name": "_itemName", "type": "string"},
+      {"internalType": "uint256", "name": "_quantity", "type": "uint256"},
+      {"internalType": "string", "name": "_category", "type": "string"}
+    ],
+    "name": "addTransaction",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "uint256", "name": "_orderId", "type": "uint256"},
+      {"internalType": "uint8", "name": "_newStatus", "type": "uint8"}
+    ],
+    "name": "updateStatus",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "uint256", "name": "orderId", "type": "uint256"},
+      {"indexed": true, "internalType": "address", "name": "sender", "type": "address"},
+      {"indexed": true, "internalType": "address", "name": "receiver", "type": "address"}
+    ],
+    "name": "TransactionAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "uint256", "name": "orderId", "type": "uint256"},
+      {"indexed": false, "internalType": "uint8", "name": "newStatus", "type": "uint8"}
+    ],
+    "name": "StatusUpdated",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "getUserTransactions",
+    "outputs": [
+      {
+        "internalType": "struct SupplyChain.Transaction[]",
+        "name": "",
+        "type": "tuple[]",
+        "components": [
+          {"internalType": "uint256", "name": "orderId", "type": "uint256"},
+          {"internalType": "string", "name": "itemId", "type": "string"},
+          {"internalType": "string", "name": "itemName", "type": "string"},
+          {"internalType": "uint256", "name": "quantity", "type": "uint256"},
+          {"internalType": "string", "name": "category", "type": "string"},
+          {"internalType": "uint8", "name": "status", "type": "uint8"}
+        ]
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "admin",
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  }
+];
+const supplyChain = new ethers.Contract(contractAddress, SupplyChainABI, wallet);
 
 // Middleware to verify Firebase ID token
 const authenticateToken = async (req, res, next) => {
@@ -59,9 +141,6 @@ app.post("/api/map-user", authenticateToken, async (req, res) => {
       { merge: true }
     );
 
-
-
-    // Assign or update retailer ID in user_details
     const retailerId = `RT-${String((await db.collection("user_details").where("typeOfUser", "==", "retailers").get()).size + 1).padStart(3, "0")}`;
     await db.collection("user_details").doc(retailerId).set({
       id: retailerId,
@@ -138,7 +217,6 @@ app.put("/api/user-profile", authenticateToken, async (req, res) => {
       { merge: true }
     );
 
-    // Update corresponding retailer entry in user_details
     const retailerSnapshot = await db.collection("user_details")
       .where("typeOfUser", "==", "retailers")
       .where("companyName", "==", companyName || "")
@@ -362,7 +440,6 @@ app.get("/api/sales-reports", authenticateToken, async (req, res) => {
       .where("date", "<=", end.toISOString())
       .get();
 
-    // Fetch inventory items to map itemId to product name
     const inventorySnapshot = await db.collection("inventoryItems").get();
     const inventoryMap = {};
     inventorySnapshot.forEach((doc) => {
@@ -370,7 +447,6 @@ app.get("/api/sales-reports", authenticateToken, async (req, res) => {
       inventoryMap[data.itemId] = data.name;
     });
 
-    // Fetch retailers from user_details
     const retailerSnapshot = await db.collection("user_details")
       .where("typeOfUser", "==", "retailers")
       .get();
@@ -382,7 +458,7 @@ app.get("/api/sales-reports", authenticateToken, async (req, res) => {
     const reports = snapshot.docs.map((doc) => {
       const data = doc.data();
       return {
-        id: data.reportId || doc.id, // Use custom reportId if present, fallback to doc.id
+        id: data.reportId || doc.id,
         retailerId: data.retailerId,
         retailerName: retailerMap[data.retailerId] || "Unknown Retailer",
         product: inventoryMap[data.itemId] || "Unknown Product",
@@ -410,11 +486,11 @@ app.post("/api/sales-reports", authenticateToken, async (req, res) => {
   try {
     const salesRef = db.collection("sales_report");
     const snapshot = await salesRef.get();
-    const reportCount = snapshot.size + 1; // Get the next sequence number
-    const reportId = `RE-${String(reportCount).padStart(3, "0")}`; // Generate ID like "RE-001"
+    const reportCount = snapshot.size + 1;
+    const reportId = `RE-${String(reportCount).padStart(3, "0")}`;
 
     const newReport = {
-      reportId, // Add the generated report ID
+      reportId,
       retailerId,
       itemId,
       noOfUnitsSold: parseInt(noOfUnitsSold),
@@ -435,7 +511,7 @@ app.post("/api/sales-reports", authenticateToken, async (req, res) => {
 app.get("/api/restock-requests", authenticateToken, async (req, res) => {
   try {
     const { period = "week", startDate, endDate } = req.query;
-    const currentDate = new Date("2025-04-11"); // Current date
+    const currentDate = new Date("2025-04-11");
     let start, end;
 
     switch (period) {
@@ -447,10 +523,10 @@ app.get("/api/restock-requests", authenticateToken, async (req, res) => {
         break;
       case "week":
         start = new Date(currentDate);
-        start.setDate(currentDate.getDate() - currentDate.getDay()); // Start of the week (Sunday)
+        start.setDate(currentDate.getDate() - currentDate.getDay());
         start.setHours(0, 0, 0, 0);
         end = new Date(start);
-        end.setDate(start.getDate() + 6); // End of the week (Saturday)
+        end.setDate(start.getDate() + 6);
         end.setHours(23, 59, 59, 999);
         break;
       case "month":
@@ -486,7 +562,6 @@ app.get("/api/restock-requests", authenticateToken, async (req, res) => {
       .where("dateOfRequest", "<=", end.toISOString())
       .get();
 
-    // Fetch inventory items to map productId to product name
     const inventorySnapshot = await db.collection("inventoryItems").get();
     const inventoryMap = {};
     inventorySnapshot.forEach((doc) => {
@@ -494,7 +569,6 @@ app.get("/api/restock-requests", authenticateToken, async (req, res) => {
       inventoryMap[data.itemId] = data.name;
     });
 
-    // Fetch retailers from user_details
     const retailerSnapshot = await db.collection("user_details")
       .where("typeOfUser", "==", "retailers")
       .get();
@@ -558,9 +632,8 @@ app.post("/api/restock-requests", authenticateToken, async (req, res) => {
     const restockRef = db.collection("restock_requests");
     const snapshot = await restockRef.get();
     const requestCount = snapshot.size + 1;
-    const requestId = `RR-${String(requestCount).padStart(3, "0")}`; // Generate ID like "RR-001"
+    const requestId = `RR-${String(requestCount).padStart(3, "0")}`;
 
-    // Map authenticated user's UID to a retailer ID from user_details
     const userProfile = (await db.collection("users").doc(req.user.uid).get()).data()?.profile || {};
     const retailerSnapshot = await db.collection("user_details")
       .where("typeOfUser", "==", "retailers")
@@ -578,7 +651,7 @@ app.post("/api/restock-requests", authenticateToken, async (req, res) => {
     const productData = productSnapshot.docs[0]?.data() || { itemId: requestId.replace("RR", "ITM"), category: "Unknown" };
 
     const newRequest = {
-      id: requestId, // Assign the generated ID
+      id: requestId,
       states: "Pending",
       dateOfRequest: new Date().toISOString(),
       productId: productData.itemId,
@@ -589,12 +662,12 @@ app.post("/api/restock-requests", authenticateToken, async (req, res) => {
       shortNote: shortNote || "",
       stockCategory: productData.category,
       description: shortNote || "",
-      retailerId, // Use the mapped or newly assigned retailer ID
+      retailerId,
       requested: { date: new Date().toISOString(), user: req.user.email?.split("@")[0] || req.user.name || req.user.uid || "Unknown User" },
       underReview: null,
       approved: null,
     };
-    await restockRef.doc(requestId).set(newRequest); // Use the generated ID as document ID
+    await restockRef.doc(requestId).set(newRequest);
     res.status(201).json({ message: "Restock request added successfully", id: requestId });
   } catch (error) {
     console.error("Error adding restock request:", error);
@@ -605,7 +678,7 @@ app.post("/api/restock-requests", authenticateToken, async (req, res) => {
 // Update restock request state
 app.put("/api/restock-requests/:id/state", authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { state, user: requestUser } = req.body; // Allow custom user from request, fallback to authenticated user
+  const { state, user: requestUser } = req.body;
 
   try {
     const restockRef = db.collection("restock_requests").doc(id);
@@ -645,6 +718,148 @@ app.put("/api/restock-requests/:id/state", authenticateToken, async (req, res) =
   } catch (error) {
     console.error("Error updating restock request state:", error);
     res.status(500).json({ message: "Failed to update restock request state" });
+  }
+});
+
+// Transaction routes integrated directly into index.js
+const transactionsRef = db.collection("transactions");
+
+// 🟢 Create a new transaction (POST)
+app.post("/api/transactions", authenticateToken, async (req, res) => {
+  try {
+    const { receiverId, itemId, itemName, quantity, category, status } = req.body;
+    // Get all current transactions to determine next orderId
+    const txs = await supplyChain.getUserTransactions();
+    const maxOrderId = txs.length > 0 ? Math.max(...txs.map(tx => Number(tx.orderId))) : 0;
+    const orderId = maxOrderId + 1;
+    const senderId = "0x90F79bf6EB2c4f870365E785982E1f101E93b906";
+    const receiverIdFixed = "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65";
+    const transactionId = `T-${String(orderId).padStart(3, '0')}`;
+    const transactionDate = new Date().toISOString();
+    // Map status string to index
+    const statusMap = { "Confirmed": 0, "Accepted by All": 1, "In Transit": 2, "Delivered": 3 };
+    const statusIndex = statusMap[status] ?? 0;
+    // Send transaction data to blockchain
+    const tx = await supplyChain.addTransaction(orderId, itemId, itemName, quantity, category);
+    await tx.wait();
+    // If status is not Confirmed, update status
+    if (statusIndex > 0) {
+      const updateTx = await supplyChain.updateStatus(orderId, statusIndex);
+      await updateTx.wait();
+    }
+    res.status(201).json({ transactionId, orderId, itemId, itemName, quantity, category, status, senderId, receiverId: receiverIdFixed, transactionDate, txHash: tx.hash });
+  } catch (error) {
+    console.error("Error adding transaction:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 🟠 Update transaction status (PUT)
+app.put("/api/transactions/:id", authenticateToken, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const { id } = req.params;
+
+    if (!status) {
+      return res.status(400).json({ message: "Missing status field" });
+    }
+
+    const docRef = transactionsRef.doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) {
+      return res.status(404).json({ message: "Transaction not found" });
+    }
+
+    const transactionData = doc.data();
+    const orderId = parseInt(id);
+    const currentStatusIndex = ["Confirmed", "Accepted by All", "In Transit", "Delivered"].indexOf(transactionData.status || "Confirmed");
+
+    const statusMap = {
+      "Accepted by All": 1,
+      "In Transit": 2,
+      "Delivered": 3,
+    };
+    const newStatusIndex = statusMap[status];
+    if (newStatusIndex === undefined || newStatusIndex <= currentStatusIndex) {
+      return res.status(400).json({ message: "Invalid or non-sequential status transition" });
+    }
+
+    const isAdmin = (await supplyChain.admin()).toLowerCase() === wallet.address.toLowerCase();
+    if (newStatusIndex === 3 && transactionData.receiverId.toLowerCase() !== wallet.address.toLowerCase()) {
+      return res.status(403).json({ message: "Only receiver can mark as Delivered" });
+    } else if (newStatusIndex < 3 && !isAdmin) {
+      return res.status(403).json({ message: "Only admin can update status" });
+    }
+
+    const updates = { status };
+    const currentDate = new Date().toISOString();
+    if (status === "Accepted by All" && !transactionData.confirmedByAllDate) {
+      updates.confirmedByAllDate = currentDate;
+    } else if (status === "In Transit" && !transactionData.inTransitDate) {
+      updates.inTransitDate = currentDate;
+    } else if (status === "Delivered" && !transactionData.deliveredDate) {
+      updates.deliveredDate = currentDate;
+    }
+
+    const tx = await supplyChain.updateStatus(orderId, newStatusIndex);
+    await tx.wait();
+
+    await docRef.update(updates);
+    res.status(200).json({ message: "Transaction updated successfully", txHash: tx.hash });
+  } catch (error) {
+    console.error("Error updating transaction:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 🟡 Get user transactions (GET)
+app.get("/api/user-transactions", authenticateToken, async (req, res) => {
+  try {
+    const txs = await supplyChain.getUserTransactions();
+    const transactions = txs.map((tx, idx) => ({
+      transactionId: `T-${String(idx + 1).padStart(3, '0')}`,
+      orderId: tx.orderId.toString(),
+      itemId: tx.itemId,
+      itemName: tx.itemName,
+      quantity: tx.quantity.toString(),
+      category: tx.category,
+      status: ["Confirmed", "Accepted by All", "In Transit", "Delivered"][tx.status],
+      senderId: "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+      receiverId: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65",
+      transactionDate: new Date().toISOString(),
+    }));
+    res.status(200).json(transactions);
+  } catch (error) {
+    console.error("Error fetching user transactions:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get a specific transaction by ID
+app.get("/api/transactions/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const txs = await supplyChain.getUserTransactions();
+    const idx = Number(id.replace('T-', '')) - 1;
+    const tx = txs[idx];
+    if (!tx) {
+      return res.status(404).json({ message: "Transaction not found" });
+    }
+    res.status(200).json({
+      transactionId: `T-${String(idx + 1).padStart(3, '0')}`,
+      orderId: tx.orderId.toString(),
+      itemId: tx.itemId,
+      itemName: tx.itemName,
+      quantity: tx.quantity.toString(),
+      category: tx.category,
+      status: ["Confirmed", "Accepted by All", "In Transit", "Delivered"][tx.status],
+      senderId: "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+      receiverId: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65",
+      transactionDate: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Error fetching transaction:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 

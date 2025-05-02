@@ -48,7 +48,14 @@ export default function LoginPage() {
   useEffect(() => {
     if (!loading && user) {
       console.log("User already logged in, redirecting to dashboard...");
-      router.push("/dashboard");
+      // Ensure token is stored in localStorage on initial load if user exists
+      user.getIdToken().then((token) => {
+        localStorage.setItem("idToken", token);
+        router.push("/dashboard");
+      }).catch((err) => {
+        console.error("Error fetching ID token on load:", err);
+        setError("Failed to authenticate. Please log in again.");
+      });
     }
   }, [user, loading, router]);
 
@@ -66,7 +73,10 @@ export default function LoginPage() {
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
-      console.log("Email login successful, user:", userCredential.user.uid);
+      const user = userCredential.user;
+      const idToken = await user.getIdToken();
+      localStorage.setItem("idToken", idToken); // Store token in localStorage
+      console.log("Email login successful, user:", user.uid);
       console.log("Redirecting to dashboard...");
       router.push("/dashboard");
     } catch (err: any) {
@@ -85,6 +95,7 @@ export default function LoginPage() {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       const idToken = await user.getIdToken();
+      localStorage.setItem("idToken", idToken); // Store token in localStorage
       console.log("Google login successful, user:", user.uid);
 
       const response = await fetch("http://localhost:4000/api/map-user", {
