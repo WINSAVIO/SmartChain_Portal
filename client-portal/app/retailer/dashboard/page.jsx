@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   ShoppingCart,
@@ -8,45 +8,90 @@ import {
   ArrowDownRight,
   ChevronRight,
 } from "lucide-react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  limit,
+  where,
+} from "firebase/firestore";
 
 export default function RetailerDashboard() {
   const router = useRouter();
+  const [metrics, setMetrics] = useState([]);
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const metrics = [
-    {
-      name: "Total Orders",
-      value: "45",
-      change: "+8%",
-      trend: "up",
-      icon: ShoppingCart,
-      color: "blue",
-    },
-    {
-      name: "Available Items",
-      value: "1,234",
-      change: "+24",
-      trend: "up",
-      icon: Package,
-      color: "purple",
-    },
-  ];
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        // Fetch total requests
+        const requestsRef = collection(db, "restock_requests");
+        const requestsSnapshot = await getDocs(requestsRef);
+        const totalRequests = requestsSnapshot.size;
 
-  const recentOrders = [
-    {
-      id: "ORD001",
-      supplier: "Tech Supplies Inc",
-      amount: 1299.99,
-      status: "Processing",
-      date: "2024-03-20",
-    },
-    {
-      id: "ORD002",
-      supplier: "Global Electronics",
-      amount: 849.99,
-      status: "Shipped",
-      date: "2024-03-19",
-    },
-  ];
+        // Fetch available items
+        const itemsRef = collection(db, "items");
+        const itemsSnapshot = await getDocs(itemsRef);
+        const availableItems = itemsSnapshot.size;
+
+        // Calculate request change (mock data for now)
+        const requestChange = "+8%";
+
+        // Set metrics
+        setMetrics([
+          {
+            name: "Total Requests",
+            value: totalRequests.toString(),
+            change: requestChange,
+            trend: "up",
+            icon: ShoppingCart,
+            color: "blue",
+          },
+          {
+            name: "Available Items",
+            value: availableItems.toString(),
+            change: "+24",
+            trend: "up",
+            icon: Package,
+            color: "purple",
+          },
+        ]);
+
+        // Fetch recent requests
+        const recentRequestsQuery = query(
+          requestsRef,
+          orderBy("dateOfRequest", "desc"),
+          limit(5)
+        );
+        const recentRequestsSnapshot = await getDocs(recentRequestsQuery);
+        const requestsData = recentRequestsSnapshot.docs.map((doc, index) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            requestId: data.requestId || doc.id,
+            item: {
+              name: data.productName || "N/A"
+            },
+            status: data.states || "Under Review",
+            createdAt: data.dateOfRequest,
+            date: data.dateOfRequest ? new Date(data.dateOfRequest).toISOString().split("T")[0] : "No date",
+            totalAmount: (data.price || 0) * (data.quantity || 0),
+            ...data
+          };
+        });
+        setRecentOrders(requestsData);
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
 
   const getColorClasses = (color) => {
     switch (color) {
@@ -58,6 +103,26 @@ export default function RetailerDashboard() {
         return "bg-green-100 text-green-600";
     }
   };
+
+  if (loading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/3 mb-8"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+            {[1, 2].map((i) => (
+              <div key={i} className="bg-white rounded-2xl shadow-sm p-8">
+                <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+                <div className="h-12 bg-gray-200 rounded w-1/2 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -151,75 +216,105 @@ export default function RetailerDashboard() {
         </button>
       </div>
 
-      {/* Recent Orders */}
+      {/* Recent Requests */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-800">Recent Orders</h2>
+          <h2 className="text-lg font-semibold text-gray-800">
+            Recent Requests
+          </h2>
           <button
-            onClick={() => router.push("/retailer/orders")}
+            onClick={() => router.push("/retailer/requests")}
             className="text-blue-600 text-sm font-medium hover:text-blue-700"
           >
-            View all orders
+            View All
           </button>
         </div>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Order ID
-              </th>
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Supplier
-              </th>
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Amount
-              </th>
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Date
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {recentOrders.map((order) => (
-              <tr
-                key={order.id}
-                className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
-                onClick={() => router.push(`/retailer/orders/${order.id}`)}
-              >
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-blue-600">
-                    {order.id}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">{order.supplier}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">
-                    ₹{order.amount.toFixed(2)}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      order.status === "Shipped"
-                        ? "bg-green-50 text-green-700"
-                        : "bg-blue-50 text-blue-700"
-                    }`}
-                  >
-                    {order.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-500">{order.date}</div>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Request ID
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Item
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Quantity
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Price
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Date
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {recentOrders.map((request) => (
+                <tr
+                  key={request.id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => router.push(`/retailer/requests/${request.id}`)}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">
+                      {request.requestId}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {request.itemName}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {request.quantity}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      ₹{request.price?.toFixed(2) || "0.00"}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      ₹{request.totalAmount.toFixed(2)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span
+                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        request.status === "Processing"
+                          ? "bg-blue-50 text-blue-600"
+                          : request.status === "Shipped"
+                          ? "bg-green-50 text-green-600"
+                          : request.status === "Rejected"
+                          ? "bg-red-50 text-red-600"
+                          : request.status === "Under Review"
+                          ? "bg-yellow-50 text-yellow-600"
+                          : "bg-gray-50 text-gray-600"
+                      }`}
+                    >
+                      {request.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {request.date}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

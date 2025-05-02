@@ -59,7 +59,13 @@ app.post("/api/map-user", authenticateToken, async (req, res) => {
       { merge: true }
     );
 
-    console.log("User data saved to Firestore:", { uid, email, companyName, address, taxId });
+    console.log("User data saved to Firestore:", {
+      uid,
+      email,
+      companyName,
+      address,
+      taxId,
+    });
 
     res.status(200).json({ message: "User mapped successfully" });
   } catch (error) {
@@ -87,7 +93,16 @@ app.get("/api/user-profile", authenticateToken, async (req, res) => {
     }
 
     const data = doc.data();
-    res.status(200).json(data.profile || { email: req.user.email, companyName: "", address: "", taxId: "" });
+    res
+      .status(200)
+      .json(
+        data.profile || {
+          email: req.user.email,
+          companyName: "",
+          address: "",
+          taxId: "",
+        }
+      );
   } catch (error) {
     console.error("Error fetching user profile from Firestore:", error);
     res.status(500).json({ message: "Failed to fetch user profile" });
@@ -148,7 +163,10 @@ app.get("/api/notification-settings", authenticateToken, async (req, res) => {
       }
     );
   } catch (error) {
-    console.error("Error fetching notification settings from Firestore:", error);
+    console.error(
+      "Error fetching notification settings from Firestore:",
+      error
+    );
     res.status(500).json({ message: "Failed to fetch notification settings" });
   }
 });
@@ -156,7 +174,8 @@ app.get("/api/notification-settings", authenticateToken, async (req, res) => {
 // Update notification settings
 app.put("/api/notification-settings", authenticateToken, async (req, res) => {
   const uid = req.user.uid;
-  const { emailNotifications, pushNotifications, weeklyReports, stockAlerts } = req.body;
+  const { emailNotifications, pushNotifications, weeklyReports, stockAlerts } =
+    req.body;
 
   try {
     const userRef = db.collection("users").doc(uid);
@@ -172,7 +191,9 @@ app.put("/api/notification-settings", authenticateToken, async (req, res) => {
       { merge: true }
     );
 
-    res.status(200).json({ message: "Notification settings updated successfully" });
+    res
+      .status(200)
+      .json({ message: "Notification settings updated successfully" });
   } catch (error) {
     console.error("Error updating notification settings in Firestore:", error);
     res.status(500).json({ message: "Failed to update notification settings" });

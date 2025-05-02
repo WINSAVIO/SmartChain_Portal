@@ -60,7 +60,7 @@
     "use-sync-external-store": "latest",
     "vaul": "^1.1.2",
     "zod": "latest",
-    "zustand": "latest"
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@types/node": "^22",

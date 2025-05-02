@@ -7,6 +7,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export default function TransactionsHistory() {
   const [mounted, setMounted] = useState(false);
@@ -21,44 +23,143 @@ export default function TransactionsHistory() {
     key: null,
     direction: "ascending",
   });
-
-  // Sample data - replace with actual data from your backend
-  const [transactionsData, setTransactionsData] = useState([
-    {
-      transactionId: "TRX001",
-      senderId: "SUP123",
-      receiverId: "RET456",
-      item: "Premium Laptop",
-      category: "Electronics",
-      quantity: 5,
-      transactionDate: "2024-03-25",
-      confirmedDate: "2024-03-26",
-    },
-    {
-      transactionId: "TRX002",
-      senderId: "SUP123",
-      receiverId: "RET789",
-      item: "Wireless Mouse",
-      category: "Accessories",
-      quantity: 20,
-      transactionDate: "2024-03-24",
-      confirmedDate: "2024-03-24",
-    },
-    {
-      transactionId: "TRX003",
-      senderId: "SUP123",
-      receiverId: "RET456",
-      item: "USB-C Hub",
-      category: "Electronics",
-      quantity: 15,
-      transactionDate: "2024-03-23",
-      confirmedDate: "2024-03-23",
-    },
-  ]);
+  const [transactionsData, setTransactionsData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setMounted(true);
+    fetchTransactions();
   }, []);
+
+  useEffect(() => {
+    setMounted(true);
+    fetchTransactions();
+  }, []);
+
+  const fetchTransactions = async () => {
+    try {
+      console.log("Fetching transactions...");
+      const requestsRef = collection(db, "restock_requests");
+      console.log("Querying restock_requests collection");
+
+      // First, let's check all documents in the collection
+      const allDocs = await getDocs(requestsRef);
+      console.log("Total documents in collection:", allDocs.size);
+      allDocs.forEach((doc) => {
+        const data = doc.data();
+        console.log(`Document ${doc.id}:`, {
+          status: data.states,
+          date: data.dateOfRequest,
+          supplier: data.supplierId,
+          retailer: data.retailerId,
+          product: data.productName
+        });
+      });
+
+      // Now let's apply our query
+      const q = query(
+        requestsRef,
+        where("states", "in", ["Processing", "Shipped", "Confirmed"])
+      );
+      console.log("Applying query with statuses:", ["Processing", "Shipped", "Confirmed"]);
+
+      const querySnapshot = await getDocs(q);
+      console.log("Query snapshot size:", querySnapshot.size);
+
+      if (querySnapshot.empty) {
+        console.log("No documents matched the query");
+      } else {
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          console.log("Matched document:", {
+            id: doc.id,
+            status: data.states,
+            date: data.dateOfRequest
+          });
+        });
+      }
+
+      const transactions = await Promise.all(
+        querySnapshot.docs.map(async (doc, index) => {
+          const data = doc.data();
+          console.log("Processing transaction:", {
+            id: doc.id,
+            status: data.states,
+            date: data.dateOfRequest
+          });
+
+          // Generate sequential transaction ID
+          const transactionId = `TRX-${String(index + 1).padStart(3, '0')}`;
+
+          // Get confirmed date from orders collection or rejection date from requests
+          let confirmedDate = "Not confirmed yet";
+          let status = data.states || "Pending";
+
+          if (status === "Rejected") {
+            confirmedDate = data.updatedAt
+              ? new Date(data.updatedAt).toISOString().split("T")[0]
+              : "Rejected";
+          } else {
+            // Check status history for acceptance date
+            if (data.statusHistory && Array.isArray(data.statusHistory)) {
+              const acceptanceEntry = data.statusHistory.find(
+                entry => entry.states === "Processing"
+              );
+              if (acceptanceEntry && acceptanceEntry.timestamp) {
+                confirmedDate = new Date(acceptanceEntry.timestamp).toISOString().split("T")[0];
+              }
+            }
+
+            // Check orders collection for confirmation
+            const ordersRef = collection(db, "orders");
+            const orderQuery = query(
+              ordersRef,
+              where("requestId", "==", doc.id)
+            );
+            const orderSnapshot = await getDocs(orderQuery);
+
+            if (!orderSnapshot.empty) {
+              const orderData = orderSnapshot.docs[0].data();
+              console.log("Found order for request", doc.id, ":", {
+                createdAt: orderData.createdAt,
+                status: orderData.status
+              });
+              if (orderData.createdAt) {
+                confirmedDate = orderData.createdAt.split("T")[0];
+                status = "Confirmed";
+              }
+            }
+          }
+
+          return {
+            id: doc.id,
+            transactionId: transactionId,
+            transactionDate: data.dateOfRequest ? new Date(data.dateOfRequest).toISOString().split("T")[0] : "No date",
+            confirmedDate: confirmedDate,
+            status: status,
+            senderId: data.supplierId || "Unknown Supplier",
+            receiverId: data.retailerId || "Unknown Retailer",
+            item: data.productName || "Unknown Item",
+            category: data.category || "Uncategorized",
+            quantity: data.quantity || 0,
+            total: data.price * data.quantity || 0,
+            urgency: data.urgency || "Normal",
+          };
+        })
+      );
+
+      // Filter out null values (pending orders)
+      const filteredTransactions = transactions.filter(
+        (transaction) => transaction !== null
+      );
+      console.log("Processed transactions:", filteredTransactions);
+      setTransactionsData(filteredTransactions);
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+      setLoading(false);
+    }
+  };
 
   const handleSort = (key) => {
     let direction = "ascending";
@@ -75,12 +176,37 @@ export default function TransactionsHistory() {
     setTransactionsData(sortedData);
   };
 
-  const filteredData = transactionsData.filter(
-    (item) =>
+  const filteredData = transactionsData.filter((item) => {
+    // Text search filter
+    const textMatch =
       item.transactionId.toLowerCase().includes(search.toLowerCase()) ||
       item.item.toLowerCase().includes(search.toLowerCase()) ||
-      item.receiverId.toLowerCase().includes(search.toLowerCase())
-  );
+      item.receiverId.toLowerCase().includes(search.toLowerCase());
+
+    // Date range filter
+    let dateMatch = true;
+    if (dateRange.from || dateRange.to) {
+      const itemDate = new Date(item.transactionDate);
+
+      if (dateRange.from) {
+        const fromDate = new Date(dateRange.from);
+        dateMatch = itemDate >= fromDate;
+      }
+
+      if (dateRange.to) {
+        const toDate = new Date(dateRange.to);
+        toDate.setDate(toDate.getDate() + 1); // Include the end date
+        dateMatch = dateMatch && itemDate < toDate;
+      }
+    }
+
+    return textMatch && dateMatch;
+  });
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, dateRange]);
 
   // Pagination
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -88,8 +214,41 @@ export default function TransactionsHistory() {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
 
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "Pending":
+        return "bg-yellow-50";
+      case "Processing":
+        return "bg-blue-50";
+      case "Shipped":
+        return "bg-green-50";
+      case "Rejected":
+        return "bg-red-50";
+      case "Accepted":
+        return "bg-purple-50";
+      default:
+        return "bg-gray-50";
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case "Pending":
+        return <Clock className="w-5 h-5 text-yellow-500" />;
+      case "Processing":
+        return <CheckCircle className="w-5 h-5 text-blue-500" />;
+      case "Shipped":
+        return <Truck className="w-5 h-5 text-green-500" />;
+      case "Rejected":
+        return <AlertCircle className="w-5 h-5 text-red-500" />;
+      case "Accepted":
+        return <CheckCircle className="w-5 h-5 text-purple-500" />;
+      default:
+        return null;
+    }
+  };
+
   const handleDownload = () => {
-    // Convert data to CSV
     const headers = [
       "Transaction ID",
       "Sender ID",
@@ -97,8 +256,9 @@ export default function TransactionsHistory() {
       "Item",
       "Category",
       "Quantity",
-      "Transaction Date",
-      "Confirmed Date",
+      "Request Date",
+      "Status Date",
+      "Status",
     ];
     const csvData = [
       headers.join(","),
@@ -112,6 +272,7 @@ export default function TransactionsHistory() {
           item.quantity,
           item.transactionDate,
           item.confirmedDate,
+          item.status,
         ].join(",")
       ),
     ].join("\n");
@@ -129,7 +290,16 @@ export default function TransactionsHistory() {
   };
 
   const formatDate = (dateString) => {
-    if (!mounted) return dateString;
+    if (
+      !mounted ||
+      !dateString ||
+      dateString === "Not confirmed yet" ||
+      dateString === "Not rejected"
+    )
+      return dateString;
+    if (dateString.includes("T")) {
+      dateString = dateString.split("T")[0];
+    }
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
@@ -137,149 +307,53 @@ export default function TransactionsHistory() {
     });
   };
 
-  if (!mounted) {
-    return null;
-  }
-
-  return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">
-          Transactions History
-        </h1>
-        <p className="text-gray-600 mt-2 text-lg">
-          View and manage your transaction records
-        </p>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-2xl shadow-sm mb-8 border border-gray-100">
-        <div className="p-6 flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="w-5 h-5 absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by Transaction ID, Item, or Retailer ID..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-            />
-          </div>
-          <div className="flex gap-4">
-            <div className="relative">
-              <Calendar className="w-5 h-5 absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="date"
-                value={dateRange.from}
-                onChange={(e) =>
-                  setDateRange({ ...dateRange, from: e.target.value })
-                }
-                className="pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-              />
-            </div>
-            <div className="relative">
-              <Calendar className="w-5 h-5 absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="date"
-                value={dateRange.to}
-                onChange={(e) =>
-                  setDateRange({ ...dateRange, to: e.target.value })
-                }
-                className="pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-              />
-            </div>
-            <button
-              onClick={handleDownload}
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
-            >
-              <Download className="w-5 h-5" />
-              Download Report
-            </button>
-          </div>
+  if (!mounted || loading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-semibold text-gray-900">Transactions History</h1>
         </div>
-      </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+        {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th
-                  onClick={() => handleSort("transactionId")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Transaction ID{" "}
-                  {sortConfig.key === "transactionId" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Transaction ID
                 </th>
-                <th
-                  onClick={() => handleSort("senderId")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Sender ID{" "}
-                  {sortConfig.key === "senderId" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Sender ID
                 </th>
-                <th
-                  onClick={() => handleSort("receiverId")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Receiver ID{" "}
-                  {sortConfig.key === "receiverId" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Receiver ID
                 </th>
-                <th
-                  onClick={() => handleSort("item")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Item{" "}
-                  {sortConfig.key === "item" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Item
                 </th>
-                <th
-                  onClick={() => handleSort("category")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Category{" "}
-                  {sortConfig.key === "category" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Category
                 </th>
-                <th
-                  onClick={() => handleSort("quantity")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Quantity{" "}
-                  {sortConfig.key === "quantity" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Quantity
                 </th>
-                <th
-                  onClick={() => handleSort("transactionDate")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Transaction Date{" "}
-                  {sortConfig.key === "transactionDate" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Request Date
                 </th>
-                <th
-                  onClick={() => handleSort("confirmedDate")}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  Confirmed Date{" "}
-                  {sortConfig.key === "confirmedDate" &&
-                    (sortConfig.direction === "ascending" ? "↑" : "↓")}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Accepted Date
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {currentItems.map((item) => (
-                <tr
-                  key={item.transactionId}
-                  className="hover:bg-gray-50 transition-colors"
-                >
+                <tr key={item.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-blue-600">
+                    <div className="text-sm font-medium text-gray-900">
                       {item.transactionId}
                     </div>
                   </td>
@@ -287,9 +361,7 @@ export default function TransactionsHistory() {
                     <div className="text-sm text-gray-900">{item.senderId}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {item.receiverId}
-                    </div>
+                    <div className="text-sm text-gray-900">{item.receiverId}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">{item.item}</div>
@@ -298,19 +370,13 @@ export default function TransactionsHistory() {
                     <div className="text-sm text-gray-900">{item.category}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {item.quantity}
-                    </div>
+                    <div className="text-sm text-gray-900">{item.quantity}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-600">
-                      {formatDate(item.transactionDate)}
-                    </div>
+                    <div className="text-sm text-gray-900">{item.transactionDate}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-600">
-                      {formatDate(item.confirmedDate)}
-                    </div>
+                    <div className="text-sm text-gray-900">{item.confirmedDate}</div>
                   </td>
                 </tr>
               ))}
@@ -318,75 +384,111 @@ export default function TransactionsHistory() {
           </table>
         </div>
 
-        {/* Pagination */}
-        <div className="px-6 py-4 flex items-center justify-between border-t border-gray-200">
-          <div className="flex-1 flex justify-between sm:hidden">
-            <button
-              onClick={() => setCurrentPage(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setCurrentPage(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
-            >
-              Next
-            </button>
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading transactions...</p>
           </div>
-          <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm text-gray-700">
-                Showing{" "}
-                <span className="font-medium">{indexOfFirstItem + 1}</span> to{" "}
-                <span className="font-medium">
-                  {Math.min(indexOfLastItem, filteredData.length)}
-                </span>{" "}
-                of <span className="font-medium">{filteredData.length}</span>{" "}
-                results
-              </p>
-            </div>
-            <div>
-              <nav
-                className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
-                aria-label="Pagination"
-              >
-                <button
-                  onClick={() => setCurrentPage(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                  <span className="sr-only">Previous</span>
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-                {[...Array(totalPages)].map((_, index) => (
-                  <button
-                    key={index + 1}
-                    onClick={() => setCurrentPage(index + 1)}
-                    className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                      currentPage === index + 1
-                        ? "z-10 bg-blue-50 border-blue-500 text-blue-600"
-                        : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
-                    }`}
-                  >
-                    {index + 1}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setCurrentPage(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                  <span className="sr-only">Next</span>
-                  <ChevronRight className="h-5 w-5" />
-                </button>
-              </nav>
-            </div>
+        )}
+
+        {/* Empty State */}
+        {!loading && currentItems.length === 0 && (
+          <div className="text-center py-8">
+            <p className="text-gray-600">No transactions found</p>
           </div>
-        </div>
+        )}
       </div>
+    );
+  }
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-semibold text-gray-900">Transactions History</h1>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Transaction ID
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Sender ID
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Receiver ID
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Item
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Category
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Quantity
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Request Date
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Accepted Date
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {currentItems.map((item) => (
+              <tr key={item.id}>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm font-medium text-gray-900">
+                    {item.transactionId}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">{item.senderId}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">{item.receiverId}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">{item.item}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">{item.category}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">{item.quantity}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">{item.transactionDate}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">{item.confirmedDate}</div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Loading State */}
+      {loading && (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading transactions...</p>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && currentItems.length === 0 && (
+        <div className="text-center py-8">
+          <p className="text-gray-600">No transactions found</p>
+        </div>
+      )}
     </div>
   );
 }
